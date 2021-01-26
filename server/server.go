@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 
@@ -15,10 +16,10 @@ import (
 
 var addr = flag.String("addr", ":8080", "http service address")
 
-var upgrader = websocket.Upgrader{}
-
 type App struct {
-	router *mux.Router
+	router   *mux.Router
+	upgrader websocket.Upgrader
+	hub      *Hub
 
 	mu       sync.Mutex
 	channels map[string]*Channel
@@ -28,17 +29,9 @@ func (a *App) Initialize() {
 	a.channels = make(map[string]*Channel, 5000)
 
 	a.router.HandleFunc("/pubsub", a.Pubsub).Methods(http.MethodGet)
-	a.router.HandleFunc("/ws", a.WebSocket).Methods(http.MethodGet)
-}
+	a.router.HandleFunc("/ws", a.serveWs).Methods(http.MethodGet)
 
-func (a *App) Close() {
-	a.mu.Lock()
-	for i, c := range a.channels {
-		if err := c.Close(); err != nil {
-			log.Println("close channel", i, ":", err)
-		}
-	}
-	a.mu.Unlock()
+	go a.hub.run()
 }
 
 func (a *App) Pubsub(w http.ResponseWriter, r *http.Request) {
@@ -56,10 +49,6 @@ func (a *App) Pubsub(w http.ResponseWriter, r *http.Request) {
 		a.commandSubscribe(w, r)
 
 		return
-	case request.CommandUnsubscribe:
-		a.commandUnsubscribe(w, r)
-
-		return
 	default:
 		respondWithError(w, http.StatusBadRequest, "Unknown command")
 
@@ -68,42 +57,27 @@ func (a *App) Pubsub(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) commandSubscribe(w http.ResponseWriter, r *http.Request) {
-	clientID := r.Header.Get("X-Client-Id")
-	println(clientID)
 	http.Redirect(w, r, "ws://"+r.Host+"/ws", http.StatusSeeOther)
 }
 
-func (a *App) commandUnsubscribe(w http.ResponseWriter, r *http.Request) {
-	clientID := r.Header.Get("X-Client-Id")
-	println(clientID)
-}
-
-func (a *App) WebSocket(w http.ResponseWriter, r *http.Request) {
-	clientID := r.Header.Get("X-Client-Id")
-	println(clientID)
-
-	{
-		a.mu.Lock()
-
-		if _, ok := a.channels[clientID]; ok {
-			a.mu.Unlock()
-			respondWithError(w, http.StatusBadRequest, "Duplicated X-Client-Id")
-
-			return
-		}
-
-		a.mu.Unlock()
-	}
-
-	c, err := upgrader.Upgrade(w, r, nil)
+// serveWs handles websocket requests from the peer.
+func (a *App) serveWs(w http.ResponseWriter, r *http.Request) {
+	conn, err := a.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println(err)
 		return
 	}
+	client := &Client{
+		id:   uuid.New().String(),
+		hub:  a.hub,
+		conn: conn,
+		send: make(chan []byte, 256),
+	}
+	client.hub.register <- client
 
-	a.mu.Lock()
-	a.channels[clientID] = NewChannel(clientID, c)
-	a.mu.Unlock()
+	// Allow collection of memory referenced by the caller by doing all work in new goroutines.
+	go client.writePump()
+	go client.readPump()
 }
 
 func respondWithError(w http.ResponseWriter, code int, message string) {
@@ -126,10 +100,13 @@ func main() {
 
 	a := &App{
 		router: r,
+		upgrader: websocket.Upgrader{
+			ReadBufferSize:  1024,
+			WriteBufferSize: 1024,
+		},
+		hub: newHub(),
 	}
 	a.Initialize()
-
-	defer a.Close()
 
 	log.Fatal(http.ListenAndServe(*addr, a.router))
 }
