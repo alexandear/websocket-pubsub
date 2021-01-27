@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
@@ -11,73 +13,30 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
 	"github.com/alexandear/websocket-pubsub/command"
 	"github.com/alexandear/websocket-pubsub/operation"
 )
 
-var addr = flag.String("addr", "localhost:8080", "http service address")
-
 func main() {
+	addr := flag.String("addr", "localhost:8080", "http service address")
+
+	log.Printf("connecting to server addr %s", *addr)
+
 	flag.Parse()
-	log.SetFlags(0)
 
-	interrupt := make(chan os.Signal, 1)
-	signal.Notify(interrupt, os.Interrupt)
-
-	client := &http.Client{
-		Timeout: 20 * time.Second,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
-
-	uhttp := url.URL{
-		Scheme: "http",
-		Host:   *addr,
-		Path:   "/pubsub",
-	}
-
-	log.Printf("connecting to %s", uhttp.String())
-
-	bs, err := json.Marshal(&operation.ReqCommand{
-		Command: command.Subscribe,
-	})
+	redirect, err := subscribeRedirect(*addr, "/pubsub")
 	if err != nil {
-		log.Fatal("marshal:", err)
+		log.Fatalf("subsribe failed: %v", err)
 	}
 
-	req, err := http.NewRequest(http.MethodGet, uhttp.String(), bytes.NewReader(bs))
-	if err != nil {
-		log.Fatal("failed to create request:", err)
+	if redirect == "" {
+		log.Fatal("nothing to do")
 	}
 
-	clientID := uuid.New().String()
-	clientID = "3d5ca28a-4f22-4fea-b2c8-23de1ac72ab9"
-	req.Header.Set("X-Client-Id", clientID)
-
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Fatal("failed to do request:", err)
-	}
-
-	loc, err := resp.Location()
-	if err == http.ErrNoLocation {
-		log.Println("nothing to do")
-
-		return
-	}
-	if err != nil {
-		log.Fatal("failed to get location:", err)
-	}
-
-	log.Printf("redirecting to %s", loc.String())
-
-	c, _, err := websocket.DefaultDialer.Dial(loc.String(), http.Header{
-		"X-Client-Id": []string{clientID},
-	})
+	// nolint:bodyclose // does not need to be closed
+	c, _, err := websocket.DefaultDialer.Dial(redirect, nil)
 	if err != nil {
 		log.Fatalf("dial failed: %v", err)
 	}
@@ -89,22 +48,99 @@ func main() {
 
 	done := make(chan struct{})
 
-	go func() {
-		defer close(done)
+	go readWs(c, done)
 
-		for {
-			_, message, err := c.ReadMessage()
-			if err != nil {
-				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-					log.Printf("unexpected close error: %v", err)
-				}
+	writeWs(c, done)
+}
 
-				return
+func subscribeRedirect(host, path string) (string, error) {
+	u := url.URL{
+		Scheme: "http",
+		Host:   host,
+		Path:   path,
+	}
+
+	log.Printf("subscribing to %s", u.String())
+
+	bs, err := json.Marshal(&operation.ReqCommand{
+		Command: command.Subscribe,
+	})
+	if err != nil {
+		return "", fmt.Errorf("marshal ReqCommand failed: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodGet, u.String(), bytes.NewReader(bs))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	client := &http.Client{
+		Timeout:       5 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error { return http.ErrUseLastResponse },
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to do request: %w", err)
+	}
+
+	if err := resp.Body.Close(); err != nil {
+		return "", fmt.Errorf("failed to close: %w", err)
+	}
+
+	loc, err := resp.Location()
+	if errors.Is(err, http.ErrNoLocation) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to get location: %w", err)
+	}
+
+	return loc.String(), nil
+}
+
+func sendCommand(conn *websocket.Conn, commandType command.Type) error {
+	if commandType == command.Subscribe {
+		return nil
+	}
+
+	log.Printf("sending %s command", commandType)
+
+	b, err := json.Marshal(&operation.ReqCommand{
+		Command: commandType,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal ReqCommand failed: %w", err)
+	}
+
+	if err := conn.WriteMessage(websocket.BinaryMessage, b); err != nil {
+		return fmt.Errorf("write binary message failed: %w", err)
+	}
+
+	return nil
+}
+
+// readWs must be invoked in goroutine.
+func readWs(conn *websocket.Conn, done chan struct{}) {
+	defer close(done)
+
+	for {
+		_, message, err := conn.ReadMessage()
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				log.Printf("unexpected close error: %v", err)
 			}
 
-			log.Printf("recv: %s", message)
+			return
 		}
-	}()
+
+		log.Printf("recv: %s", message)
+	}
+}
+
+func writeWs(conn *websocket.Conn, done chan struct{}) {
+	interrupt := make(chan os.Signal, 1)
+	signal.Notify(interrupt, os.Interrupt)
 
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
@@ -114,38 +150,16 @@ func main() {
 		case <-done:
 			return
 		case <-ticker.C:
-			log.Println("sending NUM_CONNECTIONS command")
-
-			b, err := json.Marshal(&operation.ReqCommand{
-				Command: command.NumConnections,
-			})
-			if err != nil {
-				log.Printf("marshal ReqCommand failed: %v", err)
-
-				return
-			}
-
-			if err := c.WriteMessage(websocket.BinaryMessage, b); err != nil {
-				log.Printf("write binary message failed: %v", err)
+			if err := sendCommand(conn, command.NumConnections); err != nil {
+				log.Printf("send command failed: %v", err)
 
 				return
 			}
 
 			time.Sleep(2 * time.Second)
 
-			log.Println("sending UNSUBSCRIBE command")
-
-			b, err = json.Marshal(&operation.ReqCommand{
-				Command: command.Unsubscribe,
-			})
-			if err != nil {
-				log.Printf("marshal ReqCommand failed: %v", err)
-
-				return
-			}
-
-			if err := c.WriteMessage(websocket.BinaryMessage, b); err != nil {
-				log.Printf("write binary message failed: %v", err)
+			if err := sendCommand(conn, command.Unsubscribe); err != nil {
+				log.Printf("send command failed: %v", err)
 
 				return
 			}
@@ -154,7 +168,7 @@ func main() {
 		case <-interrupt:
 			log.Println("interrupt")
 
-			if err := c.WriteMessage(websocket.CloseMessage,
+			if err := conn.WriteMessage(websocket.CloseMessage,
 				websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")); err != nil {
 				log.Printf("write close failed: %v", err)
 
@@ -164,6 +178,7 @@ func main() {
 			case <-done:
 			case <-time.After(time.Second):
 			}
+
 			return
 		}
 	}

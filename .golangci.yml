@@ -31,17 +31,11 @@ linters:
     - noctx
     - govet
     - gomnd
-    - gochecknoglobals
     - wsl
-    - funlen
-    - ineffassign
-    - nlreturn
     - staticcheck
     - exhaustive
     - exhaustivestruct
-    - bodyclose
     - gocognit
-    - errorlint
     - goerr113
 
 issues:

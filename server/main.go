@@ -9,11 +9,10 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-var addr = flag.String("addr", ":8080", "http service address")
-
 func main() {
+	addr := flag.String("addr", ":8080", "http service address")
+
 	flag.Parse()
-	log.SetFlags(0)
 
 	a := &App{
 		router: mux.NewRouter(),
@@ -24,6 +23,8 @@ func main() {
 		hub: NewHub(),
 	}
 	a.Initialize()
+
+	log.Printf("listening on %s", *addr)
 
 	log.Fatal(http.ListenAndServe(*addr, a.router))
 }
