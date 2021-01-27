@@ -5,8 +5,7 @@ import (
 	"time"
 )
 
-// Hub maintains the set of active clients and broadcasts messages to the
-// clients.
+// Hub maintains the set of active clients and broadcasts messages to the clients.
 type Hub struct {
 	// Registered clients.
 	clients map[*Client]struct{}

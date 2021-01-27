@@ -28,3 +28,13 @@ lint:
 	@echo lint
 	@go install github.com/golangci/golangci-lint/cmd/golangci-lint
 	@$(GOBIN)/golangci-lint run
+
+.PHONY: run-server
+run-server:
+	@echo run-server
+	@go run -race server/*
+
+.PHONY: run-client
+run-client:
+	@echo run-client
+	@go run -race client/*

@@ -48,10 +48,8 @@ func (c *Client) readPump() {
 		messageType, message, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Println("read error:", err)
+				log.Println("unexpected close error:", err)
 			}
-
-			log.Println("read:", err)
 
 			break
 		}
@@ -66,17 +64,29 @@ func (c *Client) readPump() {
 		if err := json.Unmarshal(message, req); err != nil {
 			log.Println("unmarshal:", err)
 
-			return
+			continue
 		}
 
-		if req.Command == command.Unsubscribe {
+		switch req.Command {
+		case command.Unsubscribe:
+			c.hub.unregister <- c
+		case command.NumConnections:
+			resp := &operation.RespNumConnections{
+				NumConnections: len(c.hub.clients),
+			}
+			b, err := json.Marshal(resp)
+			if err != nil {
+				log.Println("marshal:", err)
+
+				continue
+			}
+
 			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 
-			if err := c.conn.WriteMessage(websocket.CloseMessage,
-				websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")); err != nil {
-				log.Println("write close:", err)
+			if err := c.conn.WriteMessage(websocket.BinaryMessage, b); err != nil {
+				log.Println("write binary:", err)
 
-				return
+				continue
 			}
 		}
 	}

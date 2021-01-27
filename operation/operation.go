@@ -25,3 +25,7 @@ func (r *RespBroadcast) MarshalJSON() ([]byte, error) {
 		Timestamp: r.Timestamp.Format(time.RFC3339),
 	})
 }
+
+type RespNumConnections struct {
+	NumConnections int `json:"num_connections"`
+}

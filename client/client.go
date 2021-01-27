@@ -107,17 +107,38 @@ func main() {
 			return
 		case <-ticker.C:
 			b, err := json.Marshal(&operation.ReqCommand{
-				Command: command.Unsubscribe,
+				Command: command.NumConnections,
 			})
 			if err != nil {
 				log.Println("marshal:", err)
+
 				return
 			}
 
 			if err := c.WriteMessage(websocket.BinaryMessage, b); err != nil {
 				log.Println("write:", err)
+
 				return
 			}
+
+			time.Sleep(2 * time.Second)
+
+			b, err = json.Marshal(&operation.ReqCommand{
+				Command: command.Unsubscribe,
+			})
+			if err != nil {
+				log.Println("marshal:", err)
+
+				return
+			}
+
+			if err := c.WriteMessage(websocket.BinaryMessage, b); err != nil {
+				log.Println("write:", err)
+
+				return
+			}
+
+			return
 		case <-interrupt:
 			log.Println("interrupt")
 
