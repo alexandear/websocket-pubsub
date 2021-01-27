@@ -11,7 +11,8 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 
-	"github.com/alexandear/websocket-pubsub/request"
+	"github.com/alexandear/websocket-pubsub/command"
+	"github.com/alexandear/websocket-pubsub/operation"
 )
 
 var addr = flag.String("addr", ":8080", "http service address")
@@ -37,15 +38,15 @@ func (a *App) Initialize() {
 func (a *App) Pubsub(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 
-	var comm request.Command
-	if err := decoder.Decode(&comm); err != nil {
+	var req operation.ReqCommand
+	if err := decoder.Decode(&req); err != nil {
 		respondWithError(w, http.StatusBadRequest, "Invalid request payload")
 
 		return
 	}
 
-	switch comm.CommandType {
-	case request.CommandSubscribe:
+	switch req.Command {
+	case command.Subscribe:
 		a.commandSubscribe(w, r)
 
 		return

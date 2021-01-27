@@ -14,7 +14,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
-	"github.com/alexandear/websocket-pubsub/request"
+	"github.com/alexandear/websocket-pubsub/command"
+	"github.com/alexandear/websocket-pubsub/operation"
 )
 
 var addr = flag.String("addr", "localhost:8080", "http service address")
@@ -41,15 +42,18 @@ func main() {
 
 	log.Printf("connecting to %s", uhttp.String())
 
-	cmd := &request.Command{
-		CommandType: request.CommandSubscribe,
+	bs, err := json.Marshal(&operation.ReqCommand{
+		Command: command.Subscribe,
+	})
+	if err != nil {
+		log.Fatal("marshal:", err)
 	}
 
-	bs, _ := json.Marshal(cmd)
 	req, err := http.NewRequest(http.MethodGet, uhttp.String(), bytes.NewReader(bs))
 	if err != nil {
 		log.Fatal("failed to create request:", err)
 	}
+
 	clientID := uuid.New().String()
 	clientID = "3d5ca28a-4f22-4fea-b2c8-23de1ac72ab9"
 	req.Header.Set("X-Client-Id", clientID)
@@ -102,8 +106,9 @@ func main() {
 		case <-done:
 			return
 		case <-ticker.C:
-			req := &request.Command{CommandType: request.CommandUnsubscribe}
-			b, err := json.Marshal(req)
+			b, err := json.Marshal(&operation.ReqCommand{
+				Command: command.Unsubscribe,
+			})
 			if err != nil {
 				log.Println("marshal:", err)
 				return

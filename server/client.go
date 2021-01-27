@@ -7,7 +7,8 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"github.com/alexandear/websocket-pubsub/request"
+	"github.com/alexandear/websocket-pubsub/command"
+	"github.com/alexandear/websocket-pubsub/operation"
 )
 
 const (
@@ -51,27 +52,30 @@ func (c *Client) readPump() {
 			}
 
 			log.Println("read:", err)
+
 			break
 		}
 
-		println("read message", messageType, message)
-
 		if messageType != websocket.BinaryMessage {
+			log.Println("received unexpected message type:", messageType)
+
 			continue
 		}
 
-		req := &request.Command{}
+		req := &operation.ReqCommand{}
 		if err := json.Unmarshal(message, req); err != nil {
 			log.Println("unmarshal:", err)
+
 			return
 		}
 
-		if req.CommandType == request.CommandUnsubscribe {
+		if req.Command == command.Unsubscribe {
 			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 
 			if err := c.conn.WriteMessage(websocket.CloseMessage,
 				websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")); err != nil {
 				log.Println("write close:", err)
+
 				return
 			}
 		}
@@ -93,7 +97,8 @@ func (c *Client) writePump() {
 		case b, ok := <-c.send:
 			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
-				log.Println("The hub closed the channel")
+				log.Println("the hub closed the channel")
+
 				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
@@ -112,16 +117,14 @@ func (c *Client) writePump() {
 					return nil
 				}
 
-				type resp struct {
-					ClientID  string `json:"client_id"`
-					Timestamp string `json:"timestamp"`
-				}
-				b, err := json.Marshal(&resp{
+				resp := &operation.RespBroadcast{
 					ClientID:  c.id,
-					Timestamp: t.Format(time.RFC3339),
-				})
+					Timestamp: t,
+				}
+				b, err := resp.MarshalJSON()
 				if err != nil {
 					log.Println("marshal resp:", err)
+
 					return nil
 				}
 
