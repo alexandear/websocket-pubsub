@@ -25,9 +25,24 @@ linters-settings:
     local-prefixes: github.com/alexandear/websocket-pubsub
 
 linters:
-  disable-all: true
-  enable:
-    - lll
+  enable-all: true
+  disable:
+    - gosimple
+    - noctx
+    - govet
+    - gomnd
+    - gochecknoglobals
+    - wsl
+    - funlen
+    - ineffassign
+    - nlreturn
+    - staticcheck
+    - exhaustive
+    - exhaustivestruct
+    - bodyclose
+    - gocognit
+    - errorlint
+    - goerr113
 
 issues:
   exclude-rules:
