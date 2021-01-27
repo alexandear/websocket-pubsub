@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -27,29 +26,46 @@ const (
 	httpClientTimeout = 2 * time.Second
 )
 
-func main() {
-	addr := flag.String("addr", "localhost:8080", "http service address")
+type App struct {
+	server string
 
-	log.Printf("connecting to server addr %s", *addr)
+	client *http.Client
+	conn   *websocket.Conn
 
-	flag.Parse()
+	done      chan struct{}
+	interrupt chan os.Signal
+}
 
-	ctx := context.Background()
+func NewApp(server string) *App {
+	app := &App{
+		server: server,
+		client: &http.Client{
+			Timeout:       httpClientTimeout,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error { return http.ErrUseLastResponse },
+		},
 
-	redirect, err := subscribeRedirect(ctx, *addr, "/pubsub")
-	if err != nil {
-		log.Fatalf("subsribe failed: %v", err)
+		done:      make(chan struct{}),
+		interrupt: make(chan os.Signal, 1),
 	}
 
-	if redirect == "" {
-		log.Fatal("nothing to do")
+	signal.Notify(app.interrupt, os.Interrupt)
+
+	return app
+}
+
+func (a *App) Run(ctx context.Context) error {
+	redirect, err := a.subscribeRedirect(ctx, a.server, "/pubsub")
+	if err != nil {
+		return fmt.Errorf("subsribe failed: %w", err)
 	}
 
 	// nolint:bodyclose // does not need to be closed
 	c, _, err := websocket.DefaultDialer.DialContext(ctx, redirect, nil)
 	if err != nil {
-		log.Fatalf("dial failed: %v", err)
+		return fmt.Errorf("dial failed: %w", err)
 	}
+
+	a.conn = c
 
 	defer func() {
 		if err := c.Close(); err != nil {
@@ -57,14 +73,14 @@ func main() {
 		}
 	}()
 
-	done := make(chan struct{})
+	go a.readWs()
 
-	go readWs(c, done)
+	a.writeWs()
 
-	writeWs(c, done)
+	return nil
 }
 
-func subscribeRedirect(ctx context.Context, host, path string) (string, error) {
+func (a *App) subscribeRedirect(ctx context.Context, host, path string) (string, error) {
 	u := url.URL{
 		Scheme: "http",
 		Host:   host,
@@ -111,7 +127,7 @@ func subscribeRedirect(ctx context.Context, host, path string) (string, error) {
 	return loc.String(), nil
 }
 
-func sendCommand(conn *websocket.Conn, commandType command.Type) error {
+func (a *App) sendCommand(commandType command.Type) error {
 	if commandType == command.Subscribe {
 		return nil
 	}
@@ -125,7 +141,7 @@ func sendCommand(conn *websocket.Conn, commandType command.Type) error {
 		return fmt.Errorf("marshal ReqCommand failed: %w", err)
 	}
 
-	if err := conn.WriteMessage(websocket.BinaryMessage, b); err != nil {
+	if err := a.conn.WriteMessage(websocket.BinaryMessage, b); err != nil {
 		return fmt.Errorf("write binary message failed: %w", err)
 	}
 
@@ -133,11 +149,11 @@ func sendCommand(conn *websocket.Conn, commandType command.Type) error {
 }
 
 // readWs must be invoked in goroutine.
-func readWs(conn *websocket.Conn, done chan struct{}) {
-	defer close(done)
+func (a *App) readWs() {
+	defer close(a.done)
 
 	for {
-		_, message, err := conn.ReadMessage()
+		_, message, err := a.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				log.Printf("unexpected close error: %v", err)
@@ -150,19 +166,16 @@ func readWs(conn *websocket.Conn, done chan struct{}) {
 	}
 }
 
-func writeWs(conn *websocket.Conn, done chan struct{}) {
-	interrupt := make(chan os.Signal, 1)
-	signal.Notify(interrupt, os.Interrupt)
-
+func (a *App) writeWs() {
 	ticker := time.NewTicker(sendCommandsAfter)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case <-done:
+		case <-a.done:
 			return
 		case <-ticker.C:
-			if err := sendCommand(conn, command.NumConnections); err != nil {
+			if err := a.sendCommand(command.NumConnections); err != nil {
 				log.Printf("send command failed: %v", err)
 
 				return
@@ -170,24 +183,24 @@ func writeWs(conn *websocket.Conn, done chan struct{}) {
 
 			time.Sleep(timeoutBeforeUnsubscribe)
 
-			if err := sendCommand(conn, command.Unsubscribe); err != nil {
+			if err := a.sendCommand(command.Unsubscribe); err != nil {
 				log.Printf("send command failed: %v", err)
 
 				return
 			}
 
 			return
-		case <-interrupt:
+		case <-a.interrupt:
 			log.Println("interrupt")
 
-			if err := conn.WriteMessage(websocket.CloseMessage,
+			if err := a.conn.WriteMessage(websocket.CloseMessage,
 				websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")); err != nil {
 				log.Printf("write close failed: %v", err)
 
 				return
 			}
 			select {
-			case <-done:
+			case <-a.done:
 			case <-time.After(time.Second):
 			}
 
