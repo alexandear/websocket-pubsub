@@ -6,16 +6,20 @@ import (
 )
 
 const (
+	maxClients = 5000
+
 	broadcastFrequency = 2 * time.Second
 )
 
 // Hub maintains the set of active clients and broadcasts messages to the clients.
 type Hub struct {
-	// Registered clients.
-	clients map[*Client]struct{}
+	clients map[*Client]struct{} // Registered clients.
 
-	// Broadcast current time for the clients.
+	// Broadcast current time to the clients.
 	broadcast chan []byte
+
+	// Send num connections to client by id.
+	clientNumConnections chan string
 
 	// Register requests from the clients.
 	register chan *Client
@@ -26,10 +30,11 @@ type Hub struct {
 
 func NewHub() *Hub {
 	return &Hub{
-		broadcast:  make(chan []byte),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
-		clients:    make(map[*Client]struct{}, 5000),
+		broadcast:            make(chan []byte),
+		clientNumConnections: make(chan string),
+		register:             make(chan *Client),
+		unregister:           make(chan *Client),
+		clients:              make(map[*Client]struct{}, maxClients),
 	}
 }
 
@@ -60,6 +65,15 @@ func (h *Hub) Run() {
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
 				close(client.send)
+			}
+		case message := <-h.clientNumConnections:
+			for client := range h.clients {
+				if client.id == message {
+					select {
+					case client.send <- []byte(message):
+					default:
+					}
+				}
 			}
 		case message := <-h.broadcast:
 			for client := range h.clients {

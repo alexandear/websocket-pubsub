@@ -9,7 +9,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -28,7 +27,7 @@ type Client struct {
 	conn       *websocket.Conn
 }
 
-func NewClient(id int, interrupt chan os.Signal) *Client {
+func NewClient(id int) *Client {
 	app := &Client{
 		id: id,
 		httpClient: &http.Client{

@@ -2,9 +2,11 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
 	"github.com/alexandear/websocket-pubsub/command"
@@ -34,10 +36,6 @@ type Client struct {
 }
 
 // Read pumps messages from the websocket connection to the hub.
-//
-// The application runs Read in a per-connection goroutine. The application
-// ensures that there is at most one reader on a connection by executing all
-// reads from this goroutine.
 func (c *Client) Read() {
 	defer func() {
 		c.hub.unregister <- c
@@ -79,29 +77,12 @@ func (c *Client) Read() {
 		case command.NumConnections:
 			log.Println("received NUM_CONNECTIONS command")
 
-			b, err := json.Marshal(&operation.RespNumConnections{
-				NumConnections: len(c.hub.clients),
-			})
-			if err != nil {
-				log.Printf("marshal RespNumConnections failed: %v", err)
-
-				continue
-			}
-
-			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-
-			if err := c.conn.WriteMessage(websocket.BinaryMessage, b); err != nil {
-				log.Printf("write binary message failed: %v", err)
-			}
+			c.hub.clientNumConnections <- c.id
 		}
 	}
 }
 
 // Write pumps messages from the hub to the websocket connection.
-//
-// A goroutine running Write is started for each connection. The
-// application ensures that there is at most one writer to a connection by
-// executing all writes from this goroutine.
 func (c *Client) Write() {
 	defer func() {
 		_ = c.conn.Close()
@@ -109,8 +90,8 @@ func (c *Client) Write() {
 
 	opened := true
 	for opened {
-		var b []byte
-		b, opened = <-c.send
+		var message []byte
+		message, opened = <-c.send
 		_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 
 		if !opened {
@@ -128,21 +109,11 @@ func (c *Client) Write() {
 			return
 		}
 
-		var t time.Time
-		if uerr := t.UnmarshalBinary(b); uerr != nil {
-			log.Printf("unmarshal binary time failed: %v", uerr)
-
-			continue
-		}
-
-		rb, err := json.Marshal(&operation.RespBroadcast{
-			ClientID:  c.id,
-			Timestamp: t.Format(time.RFC3339),
-		})
+		rb, err := c.respBytes(message)
 		if err != nil {
-			log.Printf("marshal RespBroadcast failed: %v", err)
+			log.Printf("resp bytes failed: %v", err)
 
-			continue
+			return
 		}
 
 		if _, err = w.Write(rb); err != nil {
@@ -157,4 +128,32 @@ func (c *Client) Write() {
 			continue
 		}
 	}
+}
+
+func (c *Client) respBytes(message []byte) ([]byte, error) {
+	if _, err := uuid.ParseBytes(message); err == nil {
+		b, err := json.Marshal(&operation.RespNumConnections{
+			NumConnections: len(c.hub.clients),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("marshal RespNumConnections failed: %w", err)
+		}
+
+		return b, nil
+	}
+
+	var t time.Time
+	if err := t.UnmarshalBinary(message); err != nil {
+		return nil, fmt.Errorf("unmarshal binary time failed: %w", err)
+	}
+
+	b, err := json.Marshal(&operation.RespBroadcast{
+		ClientID:  c.id,
+		Timestamp: t.Format(time.RFC3339),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal RespBroadcast failed: %w", err)
+	}
+
+	return b, nil
 }

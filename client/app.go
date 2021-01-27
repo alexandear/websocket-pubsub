@@ -4,18 +4,16 @@ import (
 	"context"
 	"log"
 	"math/rand"
-	"os"
 	"sync"
 	"time"
 )
 
+const pauseBetweenCommands = 2 * time.Second
+
 type App struct {
 	server string
 
-	numClients int
-	clients    []*Client
-
-	interrupt chan os.Signal
+	clients []*Client
 }
 
 func NewApp(server string, numClients int) *App {
@@ -25,7 +23,7 @@ func NewApp(server string, numClients int) *App {
 	}
 
 	for i := 1; i <= numClients; i++ {
-		app.clients = append(app.clients, NewClient(i, app.interrupt))
+		app.clients = append(app.clients, NewClient(i))
 	}
 
 	return app
@@ -63,18 +61,18 @@ func (a *App) Run(ctx context.Context) {
 			log.Printf("num connections failed: %v", err)
 		}
 
-		time.Sleep(2 * time.Second)
+		time.Sleep(pauseBetweenCommands)
 
 		if err := a.clients[rand.Intn(len(a.clients))].Unsubscribe(); err != nil {
 			log.Printf("unsubscribe failed: %v", err)
 		}
 
-		time.Sleep(2 * time.Second)
+		time.Sleep(pauseBetweenCommands)
 
 		if err := a.clients[rand.Intn(len(a.clients))].NumConnections(); err != nil {
 			log.Printf("num connections failed: %v", err)
 		}
 
-		time.Sleep(2 * time.Second)
+		time.Sleep(pauseBetweenCommands)
 	}
 }
