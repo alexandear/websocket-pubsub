@@ -10,6 +10,7 @@ type Hub struct {
 	// Registered clients.
 	clients map[*Client]struct{}
 
+	// Broadcast current time for the clients.
 	broadcast chan []byte
 
 	// Register requests from the clients.
@@ -19,7 +20,7 @@ type Hub struct {
 	unregister chan *Client
 }
 
-func newHub() *Hub {
+func NewHub() *Hub {
 	return &Hub{
 		broadcast:  make(chan []byte),
 		register:   make(chan *Client),
@@ -28,7 +29,7 @@ func newHub() *Hub {
 	}
 }
 
-func (h *Hub) run() {
+func (h *Hub) Run() {
 	go func() {
 		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
@@ -40,7 +41,8 @@ func (h *Hub) run() {
 
 				b, err := now.MarshalBinary()
 				if err != nil {
-					log.Println("marshal time:", err)
+					log.Printf("marshal binary time failed: %v", err)
+
 					continue
 				}
 

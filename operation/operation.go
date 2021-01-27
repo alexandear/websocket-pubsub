@@ -1,9 +1,6 @@
 package operation
 
 import (
-	"encoding/json"
-	"time"
-
 	"github.com/alexandear/websocket-pubsub/command"
 )
 
@@ -12,18 +9,8 @@ type ReqCommand struct {
 }
 
 type RespBroadcast struct {
-	ClientID  string
-	Timestamp time.Time
-}
-
-func (r *RespBroadcast) MarshalJSON() ([]byte, error) {
-	return json.Marshal(&struct {
-		ClientID  string `json:"client_id"`
-		Timestamp string `json:"timestamp"`
-	}{
-		ClientID:  r.ClientID,
-		Timestamp: r.Timestamp.Format(time.RFC3339),
-	})
+	ClientID  string `json:"client_id"`
+	Timestamp string `json:"timestamp"`
 }
 
 type RespNumConnections struct {

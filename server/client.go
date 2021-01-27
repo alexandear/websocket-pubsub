@@ -21,22 +21,24 @@ const (
 
 // Client is a middleman between the websocket connection and the hub.
 type Client struct {
+	// Generated client ID.
 	id string
 
 	hub *Hub
 
+	// Websocket connection.
 	conn *websocket.Conn
 
 	// Buffered channel of outbound messages.
 	send chan []byte
 }
 
-// readPump pumps messages from the websocket connection to the hub.
+// Read pumps messages from the websocket connection to the hub.
 //
-// The application runs readPump in a per-connection goroutine. The application
+// The application runs Read in a per-connection goroutine. The application
 // ensures that there is at most one reader on a connection by executing all
 // reads from this goroutine.
-func (c *Client) readPump() {
+func (c *Client) Read() {
 	defer func() {
 		c.hub.unregister <- c
 		_ = c.conn.Close()
@@ -48,35 +50,38 @@ func (c *Client) readPump() {
 		messageType, message, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Println("unexpected close error:", err)
+				log.Printf("unexpected close error: %v", err)
 			}
 
 			break
 		}
 
 		if messageType != websocket.BinaryMessage {
-			log.Println("received unexpected message type:", messageType)
+			log.Printf("unexpected message type: %d", messageType)
 
 			continue
 		}
 
 		req := &operation.ReqCommand{}
 		if err := json.Unmarshal(message, req); err != nil {
-			log.Println("unmarshal:", err)
+			log.Printf("unmarshal ReqCommand failed: %v", err)
 
 			continue
 		}
 
 		switch req.Command {
 		case command.Unsubscribe:
+			log.Println("received UNSUBSCRIBE command")
+
 			c.hub.unregister <- c
 		case command.NumConnections:
-			resp := &operation.RespNumConnections{
+			log.Println("received NUM_CONNECTIONS command")
+
+			b, err := json.Marshal(&operation.RespNumConnections{
 				NumConnections: len(c.hub.clients),
-			}
-			b, err := json.Marshal(resp)
+			})
 			if err != nil {
-				log.Println("marshal:", err)
+				log.Printf("marshal RespNumConnections failed: %v", err)
 
 				continue
 			}
@@ -84,7 +89,7 @@ func (c *Client) readPump() {
 			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 
 			if err := c.conn.WriteMessage(websocket.BinaryMessage, b); err != nil {
-				log.Println("write binary:", err)
+				log.Printf("write binary message failed: %v", err)
 
 				continue
 			}
@@ -92,12 +97,12 @@ func (c *Client) readPump() {
 	}
 }
 
-// writePump pumps messages from the hub to the websocket connection.
+// Write pumps messages from the hub to the websocket connection.
 //
-// A goroutine running writePump is started for each connection. The
+// A goroutine running Write is started for each connection. The
 // application ensures that there is at most one writer to a connection by
 // executing all writes from this goroutine.
-func (c *Client) writePump() {
+func (c *Client) Write() {
 	defer func() {
 		_ = c.conn.Close()
 	}()
@@ -106,44 +111,49 @@ func (c *Client) writePump() {
 		select {
 		case b, ok := <-c.send:
 			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+
 			if !ok {
 				log.Println("the hub closed the channel")
 
 				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+
 				return
 			}
 
-			w, err := c.conn.NextWriter(websocket.TextMessage)
+			w, err := c.conn.NextWriter(websocket.BinaryMessage)
 			if err != nil {
-				log.Println(err)
+				log.Printf("next writer failed: %v", err)
+
 				return
 			}
 
-			_, _ = w.Write(func() []byte {
-				var t time.Time
-				if err := t.UnmarshalBinary(b); err != nil {
-					log.Println("unmarshal time:", err)
+			var t time.Time
+			if err := t.UnmarshalBinary(b); err != nil {
+				log.Printf("unmarshal binary time failed: %v", err)
 
-					return nil
-				}
+				continue
+			}
 
-				resp := &operation.RespBroadcast{
-					ClientID:  c.id,
-					Timestamp: t,
-				}
-				b, err := resp.MarshalJSON()
-				if err != nil {
-					log.Println("marshal resp:", err)
+			rb, err := json.Marshal(&operation.RespBroadcast{
+				ClientID:  c.id,
+				Timestamp: t.Format(time.RFC3339),
+			})
+			if err != nil {
+				log.Printf("marshal RespBroadcast failed: %v", err)
 
-					return nil
-				}
+				continue
+			}
 
-				return b
-			}())
+			if _, err = w.Write(rb); err != nil {
+				log.Printf("write failed: %v", err)
+
+				continue
+			}
 
 			if err := w.Close(); err != nil {
-				log.Println("close", err)
-				return
+				log.Printf("close failed: %v", err)
+
+				continue
 			}
 		}
 	}

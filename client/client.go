@@ -79,9 +79,13 @@ func main() {
 		"X-Client-Id": []string{clientID},
 	})
 	if err != nil {
-		log.Fatal("dial:", err)
+		log.Fatalf("dial failed: %v", err)
 	}
-	defer c.Close()
+	defer func() {
+		if err := c.Close(); err != nil {
+			log.Printf("close failed: %v", err)
+		}
+	}()
 
 	done := make(chan struct{})
 
@@ -91,9 +95,13 @@ func main() {
 		for {
 			_, message, err := c.ReadMessage()
 			if err != nil {
-				log.Println("read:", err)
+				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+					log.Printf("unexpected close error: %v", err)
+				}
+
 				return
 			}
+
 			log.Printf("recv: %s", message)
 		}
 	}()
@@ -106,34 +114,38 @@ func main() {
 		case <-done:
 			return
 		case <-ticker.C:
+			log.Println("sending NUM_CONNECTIONS command")
+
 			b, err := json.Marshal(&operation.ReqCommand{
 				Command: command.NumConnections,
 			})
 			if err != nil {
-				log.Println("marshal:", err)
+				log.Printf("marshal ReqCommand failed: %v", err)
 
 				return
 			}
 
 			if err := c.WriteMessage(websocket.BinaryMessage, b); err != nil {
-				log.Println("write:", err)
+				log.Printf("write binary message failed: %v", err)
 
 				return
 			}
 
 			time.Sleep(2 * time.Second)
 
+			log.Println("sending UNSUBSCRIBE command")
+
 			b, err = json.Marshal(&operation.ReqCommand{
 				Command: command.Unsubscribe,
 			})
 			if err != nil {
-				log.Println("marshal:", err)
+				log.Printf("marshal ReqCommand failed: %v", err)
 
 				return
 			}
 
 			if err := c.WriteMessage(websocket.BinaryMessage, b); err != nil {
-				log.Println("write:", err)
+				log.Printf("write binary message failed: %v", err)
 
 				return
 			}
@@ -144,7 +156,8 @@ func main() {
 
 			if err := c.WriteMessage(websocket.CloseMessage,
 				websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")); err != nil {
-				log.Println("write close:", err)
+				log.Printf("write close failed: %v", err)
+
 				return
 			}
 			select {
