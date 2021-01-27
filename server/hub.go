@@ -5,6 +5,10 @@ import (
 	"time"
 )
 
+const (
+	broadcastFrequency = 2 * time.Second
+)
+
 // Hub maintains the set of active clients and broadcasts messages to the clients.
 type Hub struct {
 	// Registered clients.
@@ -31,23 +35,20 @@ func NewHub() *Hub {
 
 func (h *Hub) Run() {
 	go func() {
-		ticker := time.NewTicker(2 * time.Second)
+		ticker := time.NewTicker(broadcastFrequency)
 		defer ticker.Stop()
 
-		for {
-			select {
-			case <-ticker.C:
-				now := time.Now().UTC()
+		for range ticker.C {
+			now := time.Now().UTC()
 
-				b, err := now.MarshalBinary()
-				if err != nil {
-					log.Printf("marshal binary time failed: %v", err)
+			b, err := now.MarshalBinary()
+			if err != nil {
+				log.Printf("marshal binary time failed: %v", err)
 
-					continue
-				}
-
-				h.broadcast <- b
+				continue
 			}
+
+			h.broadcast <- b
 		}
 	}()
 

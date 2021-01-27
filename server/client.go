@@ -70,6 +70,8 @@ func (c *Client) Read() {
 		}
 
 		switch req.Command {
+		case command.Subscribe:
+			log.Println("unexpected SUBSCRIBE command")
 		case command.Unsubscribe:
 			log.Println("received UNSUBSCRIBE command")
 
@@ -90,8 +92,6 @@ func (c *Client) Read() {
 
 			if err := c.conn.WriteMessage(websocket.BinaryMessage, b); err != nil {
 				log.Printf("write binary message failed: %v", err)
-
-				continue
 			}
 		}
 	}
@@ -107,54 +107,54 @@ func (c *Client) Write() {
 		_ = c.conn.Close()
 	}()
 
-	for {
-		select {
-		case b, ok := <-c.send:
-			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+	opened := true
+	for opened {
+		var b []byte
+		b, opened = <-c.send
+		_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 
-			if !ok {
-				log.Println("the hub closed the channel")
+		if !opened {
+			log.Println("the hub closed the channel")
 
-				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+			_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 
-				return
-			}
+			return
+		}
 
-			w, err := c.conn.NextWriter(websocket.BinaryMessage)
-			if err != nil {
-				log.Printf("next writer failed: %v", err)
+		w, err := c.conn.NextWriter(websocket.BinaryMessage)
+		if err != nil {
+			log.Printf("next writer failed: %v", err)
 
-				return
-			}
+			return
+		}
 
-			var t time.Time
-			if err := t.UnmarshalBinary(b); err != nil {
-				log.Printf("unmarshal binary time failed: %v", err)
+		var t time.Time
+		if uerr := t.UnmarshalBinary(b); uerr != nil {
+			log.Printf("unmarshal binary time failed: %v", uerr)
 
-				continue
-			}
+			continue
+		}
 
-			rb, err := json.Marshal(&operation.RespBroadcast{
-				ClientID:  c.id,
-				Timestamp: t.Format(time.RFC3339),
-			})
-			if err != nil {
-				log.Printf("marshal RespBroadcast failed: %v", err)
+		rb, err := json.Marshal(&operation.RespBroadcast{
+			ClientID:  c.id,
+			Timestamp: t.Format(time.RFC3339),
+		})
+		if err != nil {
+			log.Printf("marshal RespBroadcast failed: %v", err)
 
-				continue
-			}
+			continue
+		}
 
-			if _, err = w.Write(rb); err != nil {
-				log.Printf("write failed: %v", err)
+		if _, err = w.Write(rb); err != nil {
+			log.Printf("write failed: %v", err)
 
-				continue
-			}
+			continue
+		}
 
-			if err := w.Close(); err != nil {
-				log.Printf("close failed: %v", err)
+		if err := w.Close(); err != nil {
+			log.Printf("close failed: %v", err)
 
-				continue
-			}
+			continue
 		}
 	}
 }

@@ -9,6 +9,10 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+const (
+	upgraderBufferSize = 1024
+)
+
 func main() {
 	addr := flag.String("addr", ":8080", "http service address")
 
@@ -17,8 +21,8 @@ func main() {
 	a := &App{
 		router: mux.NewRouter(),
 		upgrader: websocket.Upgrader{
-			ReadBufferSize:  1024,
-			WriteBufferSize: 1024,
+			ReadBufferSize:  upgraderBufferSize,
+			WriteBufferSize: upgraderBufferSize,
 		},
 		hub: NewHub(),
 	}

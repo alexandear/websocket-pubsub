@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -19,6 +20,13 @@ import (
 	"github.com/alexandear/websocket-pubsub/operation"
 )
 
+const (
+	sendCommandsAfter        = 5 * time.Second
+	timeoutBeforeUnsubscribe = 2 * time.Second
+
+	httpClientTimeout = 2 * time.Second
+)
+
 func main() {
 	addr := flag.String("addr", "localhost:8080", "http service address")
 
@@ -26,7 +34,9 @@ func main() {
 
 	flag.Parse()
 
-	redirect, err := subscribeRedirect(*addr, "/pubsub")
+	ctx := context.Background()
+
+	redirect, err := subscribeRedirect(ctx, *addr, "/pubsub")
 	if err != nil {
 		log.Fatalf("subsribe failed: %v", err)
 	}
@@ -36,10 +46,11 @@ func main() {
 	}
 
 	// nolint:bodyclose // does not need to be closed
-	c, _, err := websocket.DefaultDialer.Dial(redirect, nil)
+	c, _, err := websocket.DefaultDialer.DialContext(ctx, redirect, nil)
 	if err != nil {
 		log.Fatalf("dial failed: %v", err)
 	}
+
 	defer func() {
 		if err := c.Close(); err != nil {
 			log.Printf("close failed: %v", err)
@@ -53,7 +64,7 @@ func main() {
 	writeWs(c, done)
 }
 
-func subscribeRedirect(host, path string) (string, error) {
+func subscribeRedirect(ctx context.Context, host, path string) (string, error) {
 	u := url.URL{
 		Scheme: "http",
 		Host:   host,
@@ -69,13 +80,13 @@ func subscribeRedirect(host, path string) (string, error) {
 		return "", fmt.Errorf("marshal ReqCommand failed: %w", err)
 	}
 
-	req, err := http.NewRequest(http.MethodGet, u.String(), bytes.NewReader(bs))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), bytes.NewReader(bs))
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 
 	client := &http.Client{
-		Timeout:       5 * time.Second,
+		Timeout:       httpClientTimeout,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error { return http.ErrUseLastResponse },
 	}
 
@@ -84,14 +95,15 @@ func subscribeRedirect(host, path string) (string, error) {
 		return "", fmt.Errorf("failed to do request: %w", err)
 	}
 
-	if err := resp.Body.Close(); err != nil {
-		return "", fmt.Errorf("failed to close: %w", err)
+	if cerr := resp.Body.Close(); cerr != nil {
+		return "", fmt.Errorf("failed to close: %w", cerr)
 	}
 
 	loc, err := resp.Location()
 	if errors.Is(err, http.ErrNoLocation) {
 		return "", nil
 	}
+
 	if err != nil {
 		return "", fmt.Errorf("failed to get location: %w", err)
 	}
@@ -142,7 +154,7 @@ func writeWs(conn *websocket.Conn, done chan struct{}) {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(sendCommandsAfter)
 	defer ticker.Stop()
 
 	for {
@@ -156,7 +168,7 @@ func writeWs(conn *websocket.Conn, done chan struct{}) {
 				return
 			}
 
-			time.Sleep(2 * time.Second)
+			time.Sleep(timeoutBeforeUnsubscribe)
 
 			if err := sendCommand(conn, command.Unsubscribe); err != nil {
 				log.Printf("send command failed: %v", err)

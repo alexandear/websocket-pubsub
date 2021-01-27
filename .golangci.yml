@@ -26,20 +26,19 @@ linters-settings:
 
 linters:
   enable-all: true
-  disable:
-    - gosimple
-    - noctx
-    - govet
-    - gomnd
-    - wsl
-    - staticcheck
-    - exhaustive
-    - exhaustivestruct
-    - gocognit
-    - goerr113
 
 issues:
   exclude-rules:
     - linters:
         - lll
       source: "^//go:generate "
+    - linters:
+        - exhaustivestruct
+      text: "are missing in URL"
+    - linters:
+        - exhaustivestruct
+      text: "are missing in Client"
+    - linters:
+        - exhaustivestruct
+      text: "are missing in Upgrader"
+

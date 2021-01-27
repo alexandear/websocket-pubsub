@@ -13,6 +13,10 @@ import (
 	"github.com/alexandear/websocket-pubsub/operation"
 )
 
+const (
+	sendBufferSize = 256
+)
+
 type App struct {
 	router   *mux.Router
 	upgrader websocket.Upgrader
@@ -56,7 +60,7 @@ func (a *App) ServeWs(w http.ResponseWriter, r *http.Request) {
 		id:   uuid.New().String(),
 		hub:  a.hub,
 		conn: conn,
-		send: make(chan []byte, 256),
+		send: make(chan []byte, sendBufferSize),
 	}
 	client.hub.register <- client
 

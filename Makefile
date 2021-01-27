@@ -4,6 +4,9 @@ PATH := $(MAKEFILE_PATH):$(PATH)
 export GOBIN := $(MAKEFILE_PATH)/bin
 export GOFLAGS = -mod=vendor
 
+.PHONY: default
+default: build lint
+
 .PHONY: build
 build: build-client build-server
 
