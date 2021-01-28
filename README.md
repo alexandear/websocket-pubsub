@@ -22,8 +22,7 @@ go run client/* --clients 5000
 
 Server features:
 
-- Accept HTTP request `{"command": "SUBSCRIBE"}` to `http://localhost:8080/pubsub` and redirect to websocket
-  connection `ws://localhost:8080/ws`.
+- Accept HTTP request `{"command": "SUBSCRIBE"}` to `http://localhost:8080/ws` and upgrade to websocket connection.
 - Every subscribed client receives broadcast message `{"client_id": "ID", "timestamp": UNIX_SECONDS}` every 100 ms.
 - Accept request `{"command": "UNSUBSCRIBE"}` and terminate websocket connection.
 - Accept request `{"command": "NUM_CONNECTIONS"}` and return number of active connections

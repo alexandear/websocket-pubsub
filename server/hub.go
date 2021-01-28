@@ -11,7 +11,8 @@ const (
 
 // Hub maintains the set of active clients and broadcasts messages to the clients.
 type Hub struct {
-	clients map[*Client]struct{} // Registered clients.
+	// Registered clients.
+	clients map[*Client]struct{}
 
 	broadcastDuration time.Duration
 

@@ -1,14 +1,11 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
-	"net/url"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -50,20 +47,15 @@ func (c *Client) Close() {
 }
 
 func (c *Client) Subscribe(ctx context.Context, server string) error {
-	redirect, err := c.subscribeRedirect(ctx, server, "/pubsub")
-	if err != nil {
-		return fmt.Errorf("subsribe failed: %w", err)
-	}
-
 	// nolint:bodyclose // does not need to be closed
-	conn, _, err := websocket.DefaultDialer.DialContext(ctx, redirect, nil)
+	conn, _, err := websocket.DefaultDialer.DialContext(ctx, "ws://"+server+"/ws", nil)
 	if err != nil {
 		return fmt.Errorf("dial failed: %w", err)
 	}
 
 	c.conn = conn
 
-	return nil
+	return c.sendCommand(command.Subscribe)
 }
 
 func (c *Client) Read() {
@@ -116,59 +108,8 @@ func (c *Client) Unsubscribe() error {
 	return c.sendCommand(command.Unsubscribe)
 }
 
-func (c *Client) subscribeRedirect(ctx context.Context, host, path string) (string, error) {
-	u := url.URL{
-		Scheme: "http",
-		Host:   host,
-		Path:   path,
-	}
-
-	log.Printf("subscribing %d to %s", c.id, u.String())
-
-	bs, err := json.Marshal(&operation.ReqCommand{
-		Command: command.Subscribe,
-	})
-	if err != nil {
-		return "", fmt.Errorf("marshal ReqCommand failed: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), bytes.NewReader(bs))
-	if err != nil {
-		return "", fmt.Errorf("failed to create request: %w", err)
-	}
-
-	client := &http.Client{
-		Timeout:       httpClientTimeout,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error { return http.ErrUseLastResponse },
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to do request: %w", err)
-	}
-
-	if cerr := resp.Body.Close(); cerr != nil {
-		return "", fmt.Errorf("failed to close: %w", cerr)
-	}
-
-	loc, err := resp.Location()
-	if errors.Is(err, http.ErrNoLocation) {
-		return "", nil
-	}
-
-	if err != nil {
-		return "", fmt.Errorf("failed to get location: %w", err)
-	}
-
-	return loc.String(), nil
-}
-
 func (c *Client) sendCommand(commandType command.Type) error {
 	if c.conn == nil {
-		return nil
-	}
-
-	if commandType == command.Subscribe {
 		return nil
 	}
 

@@ -69,7 +69,7 @@ func (c *Client) Read() {
 
 		switch req.Command {
 		case command.Subscribe:
-			log.Println("unexpected SUBSCRIBE command")
+			log.Println("received SUBSCRIBE command")
 		case command.Unsubscribe:
 			log.Println("received UNSUBSCRIBE command")
 
@@ -78,6 +78,8 @@ func (c *Client) Read() {
 			log.Println("received NUM_CONNECTIONS command")
 
 			c.hub.clientNumConnections <- c.id
+		default:
+			c.hub.unregister <- c
 		}
 	}
 }
