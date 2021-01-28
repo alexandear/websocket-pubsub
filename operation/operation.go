@@ -10,7 +10,7 @@ type ReqCommand struct {
 
 type RespBroadcast struct {
 	ClientID  string `json:"client_id"`
-	Timestamp string `json:"timestamp"`
+	Timestamp int    `json:"timestamp"`
 }
 
 type RespNumConnections struct {

@@ -82,7 +82,29 @@ func (c *Client) Read() {
 			return
 		}
 
-		log.Printf("recv: %s", message)
+		broadcast := &operation.RespBroadcast{}
+		if err := json.Unmarshal(message, broadcast); err != nil {
+			log.Printf("failed to unmarshal RespBroadcast: %v", err)
+
+			continue
+		}
+
+		if broadcast.Timestamp != 0 {
+			log.Printf("Client ID: %s, server time: %v", broadcast.ClientID, time.Unix(int64(broadcast.Timestamp), 0))
+
+			continue
+		}
+
+		numConnections := &operation.RespNumConnections{}
+		if err := json.Unmarshal(message, numConnections); err != nil {
+			log.Printf("failed to unmarshal RespNumConnections: %v", err)
+
+			continue
+		}
+
+		log.Printf("Number of connections: %d", numConnections.NumConnections)
+
+		continue
 	}
 }
 

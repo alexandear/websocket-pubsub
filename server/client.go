@@ -149,7 +149,7 @@ func (c *Client) respBytes(message []byte) ([]byte, error) {
 
 	b, err := json.Marshal(&operation.RespBroadcast{
 		ClientID:  c.id,
-		Timestamp: t.Format(time.RFC3339),
+		Timestamp: int(t.Unix()),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal RespBroadcast failed: %w", err)

@@ -5,22 +5,22 @@
 Run server:
 
 ```shell
-make run-server
+go run server/* --broadcast 100ms
 ```
 
 Establish websocket client connections:
 
 ```shell
-make run-client
+go run client/* --clients 5000
 ```
 
 ## Server
 
-Server possibilities:
+Server features:
 
 - Accept HTTP request `{"command": "SUBSCRIBE"}` to `http://localhost:8080/pubsub` and redirect to websocket
   connection `ws://localhost:8080/ws`.
-- Every subscribed client receives broadcast message `{"client_id": "ID", "timestamp": "timestamp"}` every 2 s.
+- Every subscribed client receives broadcast message `{"client_id": "ID", "timestamp": UNIX_SECONDS}` every 100 ms.
 - Accept request `{"command": "UNSUBSCRIBE"}` and terminate websocket connection.
 - Accept request `{"command": "NUM_CONNECTIONS"}` and return number of active connections
   `{"num_connections": 4895}`.
@@ -29,7 +29,9 @@ Server possibilities:
 
 Client do:
 
-- Create websocket connection to server.
+- Create 5000 websocket connections to server.
+- Stdout broadcast messages from the server.
 - Request current number of connections.
-- Write to screen broadcast message from the server.
-- Unsubscribe from the server.
+- Stdout current number of connections to server.
+- Unsubscribe one connection from the server.
+- Stdout current number of connections to server.

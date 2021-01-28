@@ -7,13 +7,13 @@ import (
 
 const (
 	maxClients = 5000
-
-	broadcastFrequency = 2 * time.Second
 )
 
 // Hub maintains the set of active clients and broadcasts messages to the clients.
 type Hub struct {
 	clients map[*Client]struct{} // Registered clients.
+
+	broadcastDuration time.Duration
 
 	// Broadcast current time to the clients.
 	broadcast chan []byte
@@ -28,8 +28,9 @@ type Hub struct {
 	unregister chan *Client
 }
 
-func NewHub() *Hub {
+func NewHub(broadcast time.Duration) *Hub {
 	return &Hub{
+		broadcastDuration:    broadcast,
 		broadcast:            make(chan []byte),
 		clientNumConnections: make(chan string),
 		register:             make(chan *Client),
@@ -40,7 +41,9 @@ func NewHub() *Hub {
 
 func (h *Hub) Run() {
 	go func() {
-		ticker := time.NewTicker(broadcastFrequency)
+		log.Printf("broadcasting with %s", h.broadcastDuration)
+
+		ticker := time.NewTicker(h.broadcastDuration)
 		defer ticker.Stop()
 
 		for range ticker.C {

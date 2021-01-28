@@ -46,7 +46,7 @@ func (a *App) Run(ctx context.Context) {
 				defer wg.Done()
 
 				if err := client.Subscribe(ctx, a.server); err != nil {
-					log.Printf("client %d fails to connect", i)
+					log.Printf("client %d fails to connect: %v", i, err)
 				}
 			}()
 		}
