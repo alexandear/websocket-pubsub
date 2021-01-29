@@ -27,9 +27,9 @@ lint:
 .PHONY: run-server
 run-server:
 	@echo run-server
-	@go run -race server/* --broadcast 2s
+	@go run -race . server --broadcast 2s
 
 .PHONY: run-client
 run-client:
 	@echo run-client
-	@go run -race client/* --clients 10
+	@go run -race . client --clients 4

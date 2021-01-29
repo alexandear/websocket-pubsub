@@ -7,6 +7,7 @@ import (
 
 const (
 	maxClients = 5000
+	castSize   = 1000
 )
 
 // Hub maintains the set of active clients and broadcasts messages to the clients.
@@ -16,11 +17,8 @@ type Hub struct {
 
 	broadcastDuration time.Duration
 
-	// Broadcast current time to the clients.
-	broadcast chan []byte
-
-	// Send num connections to client by id.
-	clientNumConnections chan string
+	// Broadcast or unicast messages.
+	cast chan *Message
 
 	// Register requests from the clients.
 	register chan *Client
@@ -31,12 +29,11 @@ type Hub struct {
 
 func NewHub(broadcast time.Duration) *Hub {
 	return &Hub{
-		broadcastDuration:    broadcast,
-		broadcast:            make(chan []byte),
-		clientNumConnections: make(chan string),
-		register:             make(chan *Client),
-		unregister:           make(chan *Client),
-		clients:              make(map[*Client]struct{}, maxClients),
+		broadcastDuration: broadcast,
+		cast:              make(chan *Message, castSize),
+		register:          make(chan *Client),
+		unregister:        make(chan *Client),
+		clients:           make(map[*Client]struct{}, maxClients),
 	}
 }
 
@@ -50,14 +47,10 @@ func (h *Hub) Run() {
 		for range ticker.C {
 			now := time.Now().UTC()
 
-			b, err := now.MarshalBinary()
-			if err != nil {
-				log.Printf("marshal binary time failed: %v", err)
-
-				continue
+			h.cast <- &Message{
+				Communication: CommunicationBroadcast,
+				Data:          &BroadcastData{Time: now},
 			}
-
-			h.broadcast <- b
 		}
 	}()
 
@@ -70,22 +63,27 @@ func (h *Hub) Run() {
 				delete(h.clients, client)
 				close(client.send)
 			}
-		case message := <-h.clientNumConnections:
+		case message := <-h.cast:
 			for client := range h.clients {
-				if client.id == message {
-					select {
-					case client.send <- []byte(message):
-					default:
+				switch message.Communication {
+				case CommunicationUnicast:
+					data, ok := message.Data.(*UnicastData)
+					if !ok {
+						continue
 					}
-				}
-			}
-		case message := <-h.broadcast:
-			for client := range h.clients {
-				select {
-				case client.send <- message:
+
+					if client.id == data.ClientID {
+						client.send <- message.Data
+					}
+				case CommunicationBroadcast:
+					select {
+					case client.send <- message.Data:
+					default:
+						close(client.send)
+						delete(h.clients, client)
+					}
 				default:
-					close(client.send)
-					delete(h.clients, client)
+					log.Printf("unknown message type %d", message.Communication)
 				}
 			}
 		}

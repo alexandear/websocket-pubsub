@@ -2,11 +2,11 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
 	"github.com/alexandear/websocket-pubsub/internal/pkg/command"
@@ -32,7 +32,7 @@ type Client struct {
 	conn *websocket.Conn
 
 	// Buffered channel of outbound messages.
-	send chan []byte
+	send chan Data
 }
 
 // Read pumps messages from the websocket connection to the hub.
@@ -77,7 +77,10 @@ func (c *Client) Read() {
 		case command.NumConnections:
 			log.Println("received NUM_CONNECTIONS command")
 
-			c.hub.clientNumConnections <- c.id
+			c.hub.cast <- &Message{
+				Communication: CommunicationUnicast,
+				Data:          &UnicastData{ClientID: c.id},
+			}
 		default:
 			c.hub.unregister <- c
 		}
@@ -92,7 +95,7 @@ func (c *Client) Write() {
 
 	opened := true
 	for opened {
-		var message []byte
+		var message Data
 		message, opened = <-c.send
 		_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 
@@ -111,7 +114,7 @@ func (c *Client) Write() {
 			return
 		}
 
-		rb, err := c.respBytes(message)
+		rb, err := c.newResp(message)
 		if err != nil {
 			log.Printf("resp bytes failed: %v", err)
 
@@ -132,23 +135,34 @@ func (c *Client) Write() {
 	}
 }
 
-func (c *Client) respBytes(message []byte) ([]byte, error) {
-	if _, err := uuid.ParseBytes(message); err == nil {
-		b, err := json.Marshal(&operation.RespNumConnections{
-			NumConnections: len(c.hub.clients),
-		})
-		if err != nil {
-			return nil, fmt.Errorf("marshal RespNumConnections failed: %w", err)
+func (c *Client) newResp(message Data) ([]byte, error) {
+	switch message.Type() {
+	case MessageDataNumConn:
+		return c.newRespNumConnections()
+	case MessageDataTime:
+		d, ok := message.(*BroadcastData)
+		if !ok {
+			return nil, errors.New("wrong broadcast data")
 		}
 
-		return b, nil
+		return c.newRespBroadcast(d.Time)
+	default:
+		return nil, errors.New("unknown message data type")
+	}
+}
+
+func (c *Client) newRespNumConnections() ([]byte, error) {
+	b, err := json.Marshal(&operation.RespNumConnections{
+		NumConnections: len(c.hub.clients),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal RespNumConnections failed: %w", err)
 	}
 
-	var t time.Time
-	if err := t.UnmarshalBinary(message); err != nil {
-		return nil, fmt.Errorf("unmarshal binary time failed: %w", err)
-	}
+	return b, nil
+}
 
+func (c *Client) newRespBroadcast(t time.Time) ([]byte, error) {
 	b, err := json.Marshal(&operation.RespBroadcast{
 		ClientID:  c.id,
 		Timestamp: int(t.Unix()),

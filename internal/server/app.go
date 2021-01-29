@@ -41,7 +41,7 @@ func (a *App) ServeWs(w http.ResponseWriter, r *http.Request) {
 		id:   uuid.New().String(),
 		hub:  a.hub,
 		conn: conn,
-		send: make(chan []byte, sendBufferSize),
+		send: make(chan Data, sendBufferSize),
 	}
 	client.hub.register <- client
 
