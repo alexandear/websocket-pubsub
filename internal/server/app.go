@@ -31,6 +31,7 @@ func New(addr string, broadcastFrequency time.Duration) *App {
 	}
 
 	a.router.HandleFunc("/ws", a.serveWs).Methods(http.MethodGet)
+
 	return a
 }
 
