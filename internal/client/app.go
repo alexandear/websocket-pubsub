@@ -6,6 +6,10 @@ import (
 	"math/rand"
 	"sync"
 	"time"
+
+	gws "github.com/gorilla/websocket"
+
+	"github.com/alexandear/websocket-pubsub/internal/pkg/websocket"
 )
 
 const pauseBetweenCommands = 2 * time.Second
@@ -23,7 +27,7 @@ func NewApp(server string, numClients int) *App {
 	}
 
 	for i := 1; i <= numClients; i++ {
-		app.clients = append(app.clients, NewClient(i))
+		app.clients = append(app.clients, NewClient())
 	}
 
 	return app
@@ -45,7 +49,14 @@ func (a *App) Run(ctx context.Context) {
 			go func() {
 				defer wg.Done()
 
-				if err := client.Subscribe(ctx, a.server); err != nil {
+				conn, _, err := gws.DefaultDialer.DialContext(ctx, "ws://"+a.server+"/ws", nil)
+				if err != nil {
+					log.Printf("dial failed: %v", err)
+
+					return
+				}
+
+				if err := client.Subscribe(websocket.NewConn(conn)); err != nil {
 					log.Printf("client %d fails to connect: %v", i, err)
 				}
 			}()

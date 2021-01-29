@@ -2,28 +2,26 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 
 	"github.com/google/uuid"
-	"github.com/gorilla/websocket"
 
 	"github.com/alexandear/websocket-pubsub/internal/pkg/command"
 	"github.com/alexandear/websocket-pubsub/internal/pkg/operation"
+	"github.com/alexandear/websocket-pubsub/internal/pkg/websocket"
 )
 
 const (
-	// Maximum message size allowed from peer.
-	maxMessageSize = 512
-
 	sendBufferSize = 256
 )
 
 type WsConn interface {
-	SetReadLimit(limit int64)
 	Close() error
-	ReadMessage() (messageType int, p []byte, err error)
-	WriteMessage(messageType int, data []byte) error
+	ReadBinaryMessage() ([]byte, error)
+	WriteBinaryMessage(data []byte) error
+	WriteCloseMessage()
 }
 
 // Client is a middleman between the websocket connection and the hub.
@@ -63,37 +61,26 @@ func (c *Client) read() {
 		_ = c.conn.Close()
 	}()
 
-	c.conn.SetReadLimit(maxMessageSize)
-
 	for {
-		read, err := c.readMessage()
+		message, err := c.conn.ReadBinaryMessage()
 		if err != nil {
-			log.Printf("failed to read: %v", err)
+			if !errors.Is(err, websocket.ErrClosedConn) {
+				log.Printf("failed to read: %v", err)
+			}
+
+			return
 		}
 
-		if !read {
-			break
+		if err := c.processCommand(message); err != nil {
+			log.Printf("faield to process command: %v", err)
 		}
 	}
 }
 
-func (c *Client) readMessage() (bool, error) {
-	messageType, message, err := c.conn.ReadMessage()
-	if err != nil {
-		if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-			return false, fmt.Errorf("read message failed: %w", err)
-		}
-
-		return false, nil
-	}
-
-	if messageType != websocket.BinaryMessage {
-		return true, fmt.Errorf("unexpected message type: %d", messageType)
-	}
-
+func (c *Client) processCommand(data []byte) error {
 	req := &operation.ReqCommand{}
-	if err := json.Unmarshal(message, req); err != nil {
-		return true, fmt.Errorf("unmarshal ReqCommand failed: %w", err)
+	if err := json.Unmarshal(data, req); err != nil {
+		return fmt.Errorf("unmarshal to ReqCommand failed: %w", err)
 	}
 
 	switch req.Command {
@@ -106,7 +93,7 @@ func (c *Client) readMessage() (bool, error) {
 		c.hub.Unsubscribe(c)
 	}
 
-	return true, nil
+	return nil
 }
 
 // write pumps messages from the hub to the websocket connection.
@@ -121,7 +108,7 @@ func (c *Client) write() {
 		message, opened = <-c.response
 
 		if !opened {
-			_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+			c.conn.WriteCloseMessage()
 
 			return
 		}
@@ -159,7 +146,7 @@ func (c *Client) writeMessage(message interface{}) error {
 		return fmt.Errorf("unknown response message type: %+v", m)
 	}
 
-	if err := c.conn.WriteMessage(websocket.BinaryMessage, resp); err != nil {
+	if err := c.conn.WriteBinaryMessage(resp); err != nil {
 		return fmt.Errorf("failed to write message: %w", err)
 	}
 

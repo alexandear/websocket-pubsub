@@ -6,7 +6,9 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/gorilla/websocket"
+	gws "github.com/gorilla/websocket"
+
+	"github.com/alexandear/websocket-pubsub/internal/pkg/websocket"
 )
 
 const upgraderBufferSize = 1024
@@ -21,7 +23,7 @@ type HubI interface {
 type App struct {
 	addr string
 
-	upgrader websocket.Upgrader
+	upgrader gws.Upgrader
 	hub      HubI
 	router   *mux.Router
 }
@@ -29,7 +31,7 @@ type App struct {
 func New(addr string, broadcastFrequency time.Duration) *App {
 	a := &App{
 		addr: addr,
-		upgrader: websocket.Upgrader{
+		upgrader: gws.Upgrader{
 			ReadBufferSize:  upgraderBufferSize,
 			WriteBufferSize: upgraderBufferSize,
 		},
@@ -59,6 +61,7 @@ func (a *App) serveWs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := NewClient(a.hub, conn)
+	wsConn := websocket.NewConn(conn)
+	client := NewClient(a.hub, wsConn)
 	client.Run()
 }

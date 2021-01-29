@@ -1,39 +1,29 @@
 package client
 
 import (
-	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
-	"net/http"
 	"time"
-
-	"github.com/gorilla/websocket"
 
 	"github.com/alexandear/websocket-pubsub/internal/pkg/command"
 	"github.com/alexandear/websocket-pubsub/internal/pkg/operation"
+	"github.com/alexandear/websocket-pubsub/internal/pkg/websocket"
 )
 
-const (
-	httpClientTimeout = 2 * time.Second
-)
-
-type Client struct {
-	id         int
-	httpClient *http.Client
-	conn       *websocket.Conn
+type WsConn interface {
+	Close() error
+	ReadBinaryMessage() ([]byte, error)
+	WriteBinaryMessage(data []byte) error
 }
 
-func NewClient(id int) *Client {
-	app := &Client{
-		id: id,
-		httpClient: &http.Client{
-			Timeout:       httpClientTimeout,
-			CheckRedirect: func(req *http.Request, via []*http.Request) error { return http.ErrUseLastResponse },
-		},
-	}
+type Client struct {
+	conn WsConn
+}
 
-	return app
+func NewClient() *Client {
+	return &Client{}
 }
 
 func (c *Client) Close() {
@@ -46,13 +36,7 @@ func (c *Client) Close() {
 	}
 }
 
-func (c *Client) Subscribe(ctx context.Context, server string) error {
-	// nolint:bodyclose // does not need to be closed
-	conn, _, err := websocket.DefaultDialer.DialContext(ctx, "ws://"+server+"/ws", nil)
-	if err != nil {
-		return fmt.Errorf("dial failed: %w", err)
-	}
-
+func (c *Client) Subscribe(conn WsConn) error {
 	c.conn = conn
 
 	return c.sendCommand(command.Subscribe)
@@ -64,40 +48,51 @@ func (c *Client) Read() {
 	}
 
 	for {
-		_, message, err := c.conn.ReadMessage()
+		message, err := c.conn.ReadBinaryMessage()
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure,
-				websocket.CloseNoStatusReceived) {
-				log.Printf("unexpected close error: %v", err)
+			if !errors.Is(err, websocket.ErrClosedConn) {
+				log.Printf("failed to read: %v", err)
 			}
 
 			return
 		}
 
-		broadcast := &operation.RespBroadcast{}
-		if err := json.Unmarshal(message, broadcast); err != nil {
-			log.Printf("failed to unmarshal RespBroadcast: %v", err)
+		resp, err := determineOperationResp(message)
+		if err != nil {
+			log.Printf("failed to determine operation: %v", err)
 
 			continue
 		}
 
-		if broadcast.Timestamp != 0 {
-			log.Printf("Client ID: %s, server time: %v", broadcast.ClientID, time.Unix(int64(broadcast.Timestamp), 0))
-
-			continue
+		switch r := resp.(type) {
+		case operation.RespBroadcast:
+			log.Printf("Client ID: %s, server time: %v", r.ClientID, time.Unix(int64(r.Timestamp), 0))
+		case operation.RespNumConnections:
+			log.Printf("Num connections: %d", r.NumConnections)
 		}
-
-		numConnections := &operation.RespNumConnections{}
-		if err := json.Unmarshal(message, numConnections); err != nil {
-			log.Printf("failed to unmarshal RespNumConnections: %v", err)
-
-			continue
-		}
-
-		log.Printf("Number of connections: %d", numConnections.NumConnections)
-
-		continue
 	}
+}
+
+func determineOperationResp(message []byte) (interface{}, error) {
+	var broadcast operation.RespBroadcast
+	if err := json.Unmarshal(message, &broadcast); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal RespBroadcast: %w", err)
+	}
+
+	if broadcast.Timestamp != 0 {
+		return broadcast, nil
+	}
+
+	var numConnections operation.RespNumConnections
+	if err := json.Unmarshal(message, &numConnections); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal RespNumConnections: %w", err)
+	}
+
+	if numConnections.NumConnections != 0 {
+		return numConnections, nil
+	}
+
+	return nil, errors.New("unknown operation resp")
 }
 
 func (c *Client) NumConnections() error {
@@ -122,7 +117,7 @@ func (c *Client) sendCommand(commandType command.Type) error {
 		return fmt.Errorf("marshal ReqCommand failed: %w", err)
 	}
 
-	if err := c.conn.WriteMessage(websocket.BinaryMessage, b); err != nil {
+	if err := c.conn.WriteBinaryMessage(b); err != nil {
 		return fmt.Errorf("write binary message failed: %w", err)
 	}
 
