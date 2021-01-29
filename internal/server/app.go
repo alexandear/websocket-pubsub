@@ -1,11 +1,10 @@
-package main
+package server
 
 import (
 	"log"
 	"net/http"
 
 	"github.com/google/uuid"
-	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 )
 
@@ -14,14 +13,18 @@ const (
 )
 
 type App struct {
-	router   *mux.Router
 	upgrader websocket.Upgrader
 	hub      *Hub
 }
 
-func (a *App) Initialize() {
-	a.router.HandleFunc("/ws", a.ServeWs).Methods(http.MethodGet)
+func New(upgrader websocket.Upgrader, hub *Hub) *App {
+	return &App{
+		upgrader: upgrader,
+		hub:      hub,
+	}
+}
 
+func (a *App) Start() {
 	go a.hub.Run()
 }
 

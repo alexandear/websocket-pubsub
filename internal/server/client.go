@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"encoding/json"
@@ -9,8 +9,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
-	"github.com/alexandear/websocket-pubsub/command"
-	"github.com/alexandear/websocket-pubsub/operation"
+	"github.com/alexandear/websocket-pubsub/internal/pkg/command"
+	"github.com/alexandear/websocket-pubsub/internal/pkg/operation"
 )
 
 const (

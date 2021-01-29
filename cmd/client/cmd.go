@@ -1,20 +1,21 @@
-package main
+package client
 
 import (
 	"context"
-	"flag"
-	"math/rand"
-	"time"
+
+	flag "github.com/spf13/pflag"
+
+	"github.com/alexandear/websocket-pubsub/internal/client"
 )
 
-func main() {
-	rand.Seed(time.Now().UnixNano())
-
+func Exec() error {
 	addr := flag.String("addr", "localhost:8080", "http server address")
 	clients := flag.Int("clients", 5000, "number of clients")
 
 	flag.Parse()
 
-	app := NewApp(*addr, *clients)
+	app := client.NewApp(*addr, *clients)
 	app.Run(context.Background())
+
+	return nil
 }

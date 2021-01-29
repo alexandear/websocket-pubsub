@@ -1,7 +1,7 @@
 package operation
 
 import (
-	"github.com/alexandear/websocket-pubsub/command"
+	"github.com/alexandear/websocket-pubsub/internal/pkg/command"
 )
 
 type ReqCommand struct {

@@ -8,17 +8,9 @@ export GOFLAGS = -mod=vendor
 default: build lint
 
 .PHONY: build
-build: build-client build-server
-
-.PHONY: build-client
-build-client:
-	@echo build-client
-	@go build -o ./bin/client client/*
-
-.PHONY: build-server
-build-server:
-	@echo build-server
-	@go build -o ./bin/server server/*
+build:
+	@echo build
+	@go build -o ./bin/pubsub .
 
 .PHONY: vendor
 vendor:
