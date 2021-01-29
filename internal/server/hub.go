@@ -11,19 +11,25 @@ const (
 	castSize   = 1000
 )
 
+type ClientI interface {
+	ID() string
+	CloseResponse()
+	Response(message ResponseMessage)
+}
+
 // Hub maintains the set of active clients and broadcasts messages to the clients.
 type Hub struct {
 	// Registered clients.
-	clients map[*Client]struct{}
+	clients map[ClientI]struct{}
 
 	// Broadcast or unicast messages.
 	cast chan MessageData
 
 	// Register requests from the clients.
-	subscribe chan *Client
+	subscribe chan ClientI
 
 	// Unregister requests from clients.
-	unsubscribe chan *Client
+	unsubscribe chan ClientI
 
 	broadcastFrequency time.Duration
 }
@@ -31,9 +37,9 @@ type Hub struct {
 func NewHub(broadcastFrequency time.Duration) *Hub {
 	return &Hub{
 		cast:               make(chan MessageData, castSize),
-		subscribe:          make(chan *Client),
-		unsubscribe:        make(chan *Client),
-		clients:            make(map[*Client]struct{}, maxClients),
+		subscribe:          make(chan ClientI),
+		unsubscribe:        make(chan ClientI),
+		clients:            make(map[ClientI]struct{}, maxClients),
 		broadcastFrequency: broadcastFrequency,
 	}
 }
@@ -48,23 +54,23 @@ func (h *Hub) Run(ctx context.Context) {
 		case client := <-h.unsubscribe:
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
-				close(client.response)
+				client.CloseResponse()
 			}
 		case data := <-h.cast:
 			for client := range h.clients {
-				if response := h.responseMessage(data, client.id); response != nil {
-					client.response <- response
+				if response := h.responseMessage(data, client.ID()); response != nil {
+					client.Response(response)
 				}
 			}
 		}
 	}
 }
 
-func (h *Hub) Subscribe(client *Client) {
+func (h *Hub) Subscribe(client ClientI) {
 	h.subscribe <- client
 }
 
-func (h *Hub) Unsubscribe(client *Client) {
+func (h *Hub) Unsubscribe(client ClientI) {
 	h.unsubscribe <- client
 }
 

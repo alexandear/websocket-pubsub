@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +17,13 @@ import (
 const (
 	sendBufferSize = 256
 )
+
+type HubI interface {
+	Subscribe(client ClientI)
+	Unsubscribe(client ClientI)
+	Cast(data MessageData)
+	Run(ctx context.Context)
+}
 
 type WsConn interface {
 	Close() error
@@ -48,10 +56,22 @@ func NewClient(hub HubI, conn WsConn) *Client {
 	return client
 }
 
+func (c *Client) ID() string {
+	return c.id
+}
+
 // Run allow collection of memory referenced by the caller by doing all work in new goroutines.
 func (c *Client) Run() {
 	go c.write()
 	go c.read()
+}
+
+func (c *Client) CloseResponse() {
+	close(c.response)
+}
+
+func (c *Client) Response(message ResponseMessage) {
+	c.response <- message
 }
 
 // read pumps messages from the websocket connection to the hub.

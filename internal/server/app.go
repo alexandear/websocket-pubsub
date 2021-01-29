@@ -13,13 +13,6 @@ import (
 
 const upgraderBufferSize = 1024
 
-type HubI interface {
-	Subscribe(client *Client)
-	Unsubscribe(client *Client)
-	Cast(data MessageData)
-	Run(ctx context.Context)
-}
-
 type App struct {
 	addr string
 
