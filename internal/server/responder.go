@@ -11,17 +11,22 @@ import (
 
 type Responder struct{}
 
-func (r *Responder) Bytes(clientID string, numConnections int, message Data) ([]byte, error) {
+func (r *Responder) Bytes(message Data) ([]byte, error) {
 	switch message.Type() {
 	case MessageDataNumConn:
-		return r.numConnections(numConnections)
+		d, ok := message.(*UnicastData)
+		if !ok {
+			return nil, errors.New("wrong unicast data")
+		}
+
+		return r.numConnections(d.NumConnections)
 	case MessageDataTime:
 		d, ok := message.(*BroadcastData)
 		if !ok {
 			return nil, errors.New("wrong broadcast data")
 		}
 
-		return r.broadcast(clientID, d.Time)
+		return r.broadcast(d.ClientID, d.Time)
 	default:
 		return nil, errors.New("unknown message data type")
 	}

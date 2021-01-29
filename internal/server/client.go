@@ -100,7 +100,10 @@ func (c *Client) readMessage() (bool, error) {
 	case command.NumConnections:
 		c.hub.cast <- &Message{
 			Communication: CommunicationUnicast,
-			Data:          &UnicastData{ClientID: c.id},
+			Data: &UnicastData{
+				ClientID:       c.id,
+				NumConnections: 0,
+			},
 		}
 	default:
 		c.hub.unregister <- c
@@ -133,7 +136,7 @@ func (c *Client) write() {
 }
 
 func (c *Client) writeMessage(data Data) error {
-	resp, err := c.resp.Bytes(c.id, len(c.hub.clients), data)
+	resp, err := c.resp.Bytes(data)
 	if err != nil {
 		return fmt.Errorf("failed to create resp: %w", err)
 	}

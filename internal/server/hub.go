@@ -38,21 +38,9 @@ func NewHub(broadcast time.Duration) *Hub {
 }
 
 func (h *Hub) Run() {
-	go func() {
-		log.Printf("broadcasting with %s", h.broadcastDuration)
+	log.Printf("broadcasting time with frequency %s", h.broadcastDuration)
 
-		ticker := time.NewTicker(h.broadcastDuration)
-		defer ticker.Stop()
-
-		for range ticker.C {
-			now := time.Now().UTC()
-
-			h.cast <- &Message{
-				Communication: CommunicationBroadcast,
-				Data:          &BroadcastData{Time: now},
-			}
-		}
-	}()
+	go h.broadcastTime()
 
 	for {
 		select {
@@ -65,27 +53,58 @@ func (h *Hub) Run() {
 			}
 		case message := <-h.cast:
 			for client := range h.clients {
-				switch message.Communication {
-				case CommunicationUnicast:
-					data, ok := message.Data.(*UnicastData)
-					if !ok {
-						continue
-					}
-
-					if client.id == data.ClientID {
-						client.send <- message.Data
-					}
-				case CommunicationBroadcast:
-					select {
-					case client.send <- message.Data:
-					default:
-						close(client.send)
-						delete(h.clients, client)
-					}
-				default:
-					log.Printf("unknown message type %d", message.Communication)
+				if send := h.dataToSend(message, client); send != nil {
+					client.send <- send
 				}
 			}
 		}
 	}
+}
+
+func (h *Hub) broadcastTime() {
+	ticker := time.NewTicker(h.broadcastDuration)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		now := time.Now().UTC()
+
+		h.cast <- &Message{
+			Communication: CommunicationBroadcast,
+			Data: &BroadcastData{
+				ClientID: "",
+				Time:     now,
+			},
+		}
+	}
+}
+
+func (h *Hub) dataToSend(message *Message, client *Client) Data {
+	switch message.Communication {
+	case CommunicationUnicast:
+		data, ok := message.Data.(*UnicastData)
+		if !ok {
+			return nil
+		}
+
+		if client.id == data.ClientID {
+			return &UnicastData{
+				ClientID:       data.ClientID,
+				NumConnections: len(client.hub.clients),
+			}
+		}
+	case CommunicationBroadcast:
+		data, ok := message.Data.(*BroadcastData)
+		if !ok {
+			return nil
+		}
+
+		return &BroadcastData{
+			ClientID: client.id,
+			Time:     data.Time,
+		}
+	default:
+		log.Printf("unknown message type %d", message.Communication)
+	}
+
+	return nil
 }

@@ -28,7 +28,8 @@ type Message struct {
 }
 
 type BroadcastData struct {
-	Time time.Time
+	ClientID string
+	Time     time.Time
 }
 
 func (d *BroadcastData) Type() MessageData {
@@ -36,7 +37,8 @@ func (d *BroadcastData) Type() MessageData {
 }
 
 type UnicastData struct {
-	ClientID string
+	ClientID       string
+	NumConnections int
 }
 
 func (d *UnicastData) Type() MessageData {
