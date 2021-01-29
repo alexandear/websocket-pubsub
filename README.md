@@ -5,13 +5,13 @@
 Run server:
 
 ```shell
-go run server/* --broadcast 100ms
+go run . server --broadcast 100ms
 ```
 
 Establish websocket client connections:
 
 ```shell
-go run client/* --clients 5000
+go run . client --clients 5000
 ```
 
 ## Demo
