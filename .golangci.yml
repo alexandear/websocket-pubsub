@@ -28,6 +28,7 @@ linters:
   enable-all: true
   disable:
     - gosec
+    - goerr113
 
 issues:
   exclude-rules:

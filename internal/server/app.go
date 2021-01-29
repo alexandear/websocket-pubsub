@@ -7,8 +7,6 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-const ()
-
 type App struct {
 	upgrader websocket.Upgrader
 	hub      *Hub

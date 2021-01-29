@@ -78,7 +78,7 @@ func (c *Client) readMessage() (bool, error) {
 	messageType, message, err := c.conn.ReadMessage()
 	if err != nil {
 		if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-			return false, err
+			return false, fmt.Errorf("read message failed: %w", err)
 		}
 
 		return false, nil
