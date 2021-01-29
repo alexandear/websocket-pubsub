@@ -56,7 +56,9 @@ func (a *App) Run(ctx context.Context) {
 					return
 				}
 
-				if err := client.Subscribe(websocket.NewConn(conn)); err != nil {
+				client.SetConn(websocket.NewConn(conn))
+
+				if err := client.Subscribe(); err != nil {
 					log.Printf("client %d fails to connect: %v", i, err)
 				}
 			}()

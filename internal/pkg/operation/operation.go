@@ -8,6 +8,8 @@ type ReqCommand struct {
 	Command command.Type `json:"command"`
 }
 
+type Resp interface{}
+
 type RespBroadcast struct {
 	ClientID  string `json:"client_id"`
 	Timestamp int    `json:"timestamp"`

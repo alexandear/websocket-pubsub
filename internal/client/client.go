@@ -12,6 +12,8 @@ import (
 	"github.com/alexandear/websocket-pubsub/internal/pkg/websocket"
 )
 
+var ErrNilConn = errors.New("nil ws conn")
+
 type WsConn interface {
 	Close() error
 	ReadBinaryMessage() ([]byte, error)
@@ -26,20 +28,41 @@ func NewClient() *Client {
 	return &Client{}
 }
 
-func (c *Client) Close() {
-	if c.conn == nil {
-		return
-	}
-
-	if err := c.conn.Close(); err != nil {
-		log.Printf("close failed: %v", err)
-	}
+func (c *Client) SetConn(conn WsConn) {
+	c.conn = conn
 }
 
-func (c *Client) Subscribe(conn WsConn) error {
-	c.conn = conn
-
+func (c *Client) Subscribe() error {
 	return c.sendCommand(command.Subscribe)
+}
+
+func (c *Client) NumConnections() error {
+	return c.sendCommand(command.NumConnections)
+}
+
+func (c *Client) Unsubscribe() error {
+	return c.sendCommand(command.Unsubscribe)
+}
+
+func (c *Client) sendCommand(commandType command.Type) error {
+	if c.conn == nil {
+		return ErrNilConn
+	}
+
+	log.Printf("sending %s command", commandType)
+
+	b, err := json.Marshal(&operation.ReqCommand{
+		Command: commandType,
+	})
+	if err != nil {
+		return fmt.Errorf("marshal ReqCommand failed: %w", err)
+	}
+
+	if err := c.conn.WriteBinaryMessage(b); err != nil {
+		return fmt.Errorf("write binary message failed: %w", err)
+	}
+
+	return nil
 }
 
 func (c *Client) Read() {
@@ -73,7 +96,7 @@ func (c *Client) Read() {
 	}
 }
 
-func determineOperationResp(message []byte) (interface{}, error) {
+func determineOperationResp(message []byte) (operation.Resp, error) {
 	var broadcast operation.RespBroadcast
 	if err := json.Unmarshal(message, &broadcast); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal RespBroadcast: %w", err)
@@ -95,31 +118,12 @@ func determineOperationResp(message []byte) (interface{}, error) {
 	return nil, errors.New("unknown operation resp")
 }
 
-func (c *Client) NumConnections() error {
-	return c.sendCommand(command.NumConnections)
-}
-
-func (c *Client) Unsubscribe() error {
-	return c.sendCommand(command.Unsubscribe)
-}
-
-func (c *Client) sendCommand(commandType command.Type) error {
+func (c *Client) Close() {
 	if c.conn == nil {
-		return nil
+		return
 	}
 
-	log.Printf("sending %s command", commandType)
-
-	b, err := json.Marshal(&operation.ReqCommand{
-		Command: commandType,
-	})
-	if err != nil {
-		return fmt.Errorf("marshal ReqCommand failed: %w", err)
+	if err := c.conn.Close(); err != nil {
+		log.Printf("close failed: %v", err)
 	}
-
-	if err := c.conn.WriteBinaryMessage(b); err != nil {
-		return fmt.Errorf("write binary message failed: %w", err)
-	}
-
-	return nil
 }
