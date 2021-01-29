@@ -34,58 +34,53 @@ func NewApp(server string, numClients int) *App {
 }
 
 func (a *App) Run(ctx context.Context) {
-	select {
-	case <-ctx.Done():
-		return
-	default:
-		wg := &sync.WaitGroup{}
+	wg := &sync.WaitGroup{}
 
-		for i, client := range a.clients {
-			i := i
-			client := client
+	for i, client := range a.clients {
+		i := i
+		client := client
 
-			wg.Add(1)
+		wg.Add(1)
 
-			go func() {
-				defer wg.Done()
+		go func() {
+			defer wg.Done()
 
-				conn, _, err := gws.DefaultDialer.DialContext(ctx, "ws://"+a.server+"/ws", nil)
-				if err != nil {
-					log.Printf("dial failed: %v", err)
+			conn, _, err := gws.DefaultDialer.DialContext(ctx, "ws://"+a.server+"/ws", nil)
+			if err != nil {
+				log.Printf("dial failed: %v", err)
 
-					return
-				}
+				return
+			}
 
-				client.SetConn(websocket.NewConn(conn))
+			client.SetConn(websocket.NewConn(conn))
 
-				if err := client.Subscribe(); err != nil {
-					log.Printf("client %d fails to connect: %v", i, err)
-				}
-			}()
-		}
-
-		wg.Wait()
-
-		for _, client := range a.clients {
-			go client.Read()
-		}
-
-		if err := a.clients[rand.Intn(len(a.clients))].NumConnections(); err != nil {
-			log.Printf("num connections failed: %v", err)
-		}
-
-		time.Sleep(pauseBetweenCommands)
-
-		if err := a.clients[rand.Intn(len(a.clients))].Unsubscribe(); err != nil {
-			log.Printf("unsubscribe failed: %v", err)
-		}
-
-		time.Sleep(pauseBetweenCommands)
-
-		if err := a.clients[rand.Intn(len(a.clients))].NumConnections(); err != nil {
-			log.Printf("num connections failed: %v", err)
-		}
-
-		time.Sleep(pauseBetweenCommands)
+			if err := client.Subscribe(); err != nil {
+				log.Printf("client %d fails to connect: %v", i, err)
+			}
+		}()
 	}
+
+	wg.Wait()
+
+	for _, client := range a.clients {
+		go client.Read()
+	}
+
+	if err := a.clients[rand.Intn(len(a.clients))].NumConnections(); err != nil {
+		log.Printf("num connections failed: %v", err)
+	}
+
+	time.Sleep(pauseBetweenCommands)
+
+	if err := a.clients[rand.Intn(len(a.clients))].Unsubscribe(); err != nil {
+		log.Printf("unsubscribe failed: %v", err)
+	}
+
+	time.Sleep(pauseBetweenCommands)
+
+	if err := a.clients[rand.Intn(len(a.clients))].NumConnections(); err != nil {
+		log.Printf("num connections failed: %v", err)
+	}
+
+	time.Sleep(pauseBetweenCommands)
 }

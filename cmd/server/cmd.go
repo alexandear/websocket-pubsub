@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"time"
 
 	flag "github.com/spf13/pflag"
@@ -18,7 +19,7 @@ func Exec() error {
 
 	flag.Parse()
 
-	a := server.New(*addr, *broadcast)
+	a := server.New(*addr, server.NewHub(*broadcast))
 
-	return a.Run()
+	return a.Run(context.Background())
 }

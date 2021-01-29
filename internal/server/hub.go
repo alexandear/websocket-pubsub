@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"log"
 	"time"
 )
@@ -37,7 +38,7 @@ func NewHub(broadcastFrequency time.Duration) *Hub {
 	}
 }
 
-func (h *Hub) Run() {
+func (h *Hub) Run(ctx context.Context) {
 	go h.broadcastServerTime()
 
 	for {

@@ -1,9 +1,9 @@
 package server
 
 import (
+	"context"
 	"log"
 	"net/http"
-	"time"
 
 	"github.com/gorilla/mux"
 	gws "github.com/gorilla/websocket"
@@ -17,7 +17,7 @@ type HubI interface {
 	Subscribe(client *Client)
 	Unsubscribe(client *Client)
 	Cast(data MessageData)
-	Run()
+	Run(ctx context.Context)
 }
 
 type App struct {
@@ -28,14 +28,14 @@ type App struct {
 	router   *mux.Router
 }
 
-func New(addr string, broadcastFrequency time.Duration) *App {
+func New(addr string, hub HubI) *App {
 	a := &App{
 		addr: addr,
 		upgrader: gws.Upgrader{
 			ReadBufferSize:  upgraderBufferSize,
 			WriteBufferSize: upgraderBufferSize,
 		},
-		hub:    NewHub(broadcastFrequency),
+		hub:    hub,
 		router: mux.NewRouter(),
 	}
 
@@ -44,8 +44,8 @@ func New(addr string, broadcastFrequency time.Duration) *App {
 	return a
 }
 
-func (a *App) Run() error {
-	go a.hub.Run()
+func (a *App) Run(ctx context.Context) error {
+	go a.hub.Run(ctx)
 
 	log.Printf("listening on %s", a.addr)
 
