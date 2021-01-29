@@ -24,12 +24,12 @@ lint:
 	@go install github.com/golangci/golangci-lint/cmd/golangci-lint
 	@$(GOBIN)/golangci-lint run
 
-.PHONY: run-server
-run-server:
-	@echo run-server
+.PHONY: server
+server:
+	@echo server
 	@go run -race . server --broadcast 2s
 
-.PHONY: run-client
-run-client:
-	@echo run-client
+.PHONY: client
+client:
+	@echo client
 	@go run -race . client --clients 4

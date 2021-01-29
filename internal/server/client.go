@@ -30,25 +30,24 @@ type Client struct {
 	conn *websocket.Conn
 
 	// Buffered channel of outbound messages.
-	send chan Data
-
-	resp *Responder
+	response chan ResponseMessage
 }
 
 func NewClient(hub *Hub, conn *websocket.Conn) *Client {
 	client := &Client{
-		id:   uuid.New().String(),
-		hub:  hub,
-		conn: conn,
-		send: make(chan Data, sendBufferSize),
-		resp: &Responder{},
+		id:       uuid.New().String(),
+		hub:      hub,
+		conn:     conn,
+		response: make(chan ResponseMessage, sendBufferSize),
 	}
+
+	hub.subscribe <- client
 
 	return client
 }
 
-// Start allow collection of memory referenced by the caller by doing all work in new goroutines.
-func (c *Client) Start() {
+// Run allow collection of memory referenced by the caller by doing all work in new goroutines.
+func (c *Client) Run() {
 	go c.write()
 	go c.read()
 }
@@ -56,7 +55,7 @@ func (c *Client) Start() {
 // read pumps messages from the websocket connection to the hub.
 func (c *Client) read() {
 	defer func() {
-		c.hub.unregister <- c
+		c.hub.unsubscribe <- c
 		_ = c.conn.Close()
 	}()
 
@@ -96,17 +95,14 @@ func (c *Client) readMessage() (bool, error) {
 	switch req.Command {
 	case command.Subscribe:
 	case command.Unsubscribe:
-		c.hub.unregister <- c
+		c.hub.unsubscribe <- c
 	case command.NumConnections:
 		c.hub.cast <- &Message{
-			Communication: CommunicationUnicast,
-			Data: &UnicastData{
-				ClientID:       c.id,
-				NumConnections: 0,
-			},
+			CastType: Unicast,
+			Data:     &UnicastData{ClientID: c.id},
 		}
 	default:
-		c.hub.unregister <- c
+		c.hub.unsubscribe <- c
 	}
 
 	return true, nil
@@ -120,8 +116,8 @@ func (c *Client) write() {
 
 	opened := true
 	for opened {
-		var message Data
-		message, opened = <-c.send
+		var message interface{}
+		message, opened = <-c.response
 
 		if !opened {
 			_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
@@ -135,10 +131,31 @@ func (c *Client) write() {
 	}
 }
 
-func (c *Client) writeMessage(data Data) error {
-	resp, err := c.resp.Bytes(data)
-	if err != nil {
-		return fmt.Errorf("failed to create resp: %w", err)
+func (c *Client) writeMessage(message interface{}) error {
+	var resp json.RawMessage
+
+	switch m := message.(type) {
+	case ResponseUnicast:
+		r, err := json.Marshal(&operation.RespNumConnections{
+			NumConnections: m.NumConnections,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to marshal num connections response: %w", err)
+		}
+
+		resp = r
+	case ResponseBroadcast:
+		r, err := json.Marshal(&operation.RespBroadcast{
+			ClientID:  m.ClientID,
+			Timestamp: int(m.Time.Unix()),
+		})
+		if err != nil {
+			return fmt.Errorf("failed to marshal broadcast response: %w", err)
+		}
+
+		resp = r
+	default:
+		return fmt.Errorf("unknown response message type: %+v", m)
 	}
 
 	if err := c.conn.WriteMessage(websocket.BinaryMessage, resp); err != nil {

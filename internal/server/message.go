@@ -4,11 +4,11 @@ import (
 	"time"
 )
 
-type Communication int
+type CastType int
 
 const (
-	CommunicationBroadcast Communication = iota
-	CommunicationUnicast
+	Broadcast CastType = iota
+	Unicast
 )
 
 type MessageData int
@@ -23,13 +23,12 @@ type Data interface {
 }
 
 type Message struct {
-	Communication Communication
-	Data          Data
+	CastType CastType
+	Data     Data
 }
 
 type BroadcastData struct {
-	ClientID string
-	Time     time.Time
+	Time time.Time
 }
 
 func (d *BroadcastData) Type() MessageData {
@@ -37,10 +36,24 @@ func (d *BroadcastData) Type() MessageData {
 }
 
 type UnicastData struct {
-	ClientID       string
-	NumConnections int
+	ClientID string
 }
 
 func (d *UnicastData) Type() MessageData {
 	return MessageDataNumConn
+}
+
+type ResponseMessage interface{}
+
+type ResponseBroadcast struct {
+	ResponseMessage
+
+	ClientID string
+	Time     time.Time
+}
+
+type ResponseUnicast struct {
+	ResponseMessage
+
+	NumConnections int
 }

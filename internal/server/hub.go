@@ -15,96 +15,96 @@ type Hub struct {
 	// Registered clients.
 	clients map[*Client]struct{}
 
-	broadcastDuration time.Duration
-
 	// Broadcast or unicast messages.
 	cast chan *Message
 
 	// Register requests from the clients.
-	register chan *Client
+	subscribe chan *Client
 
 	// Unregister requests from clients.
-	unregister chan *Client
+	unsubscribe chan *Client
+
+	broadcastFrequency time.Duration
 }
 
-func NewHub(broadcast time.Duration) *Hub {
+func NewHub(broadcastFrequency time.Duration) *Hub {
 	return &Hub{
-		broadcastDuration: broadcast,
-		cast:              make(chan *Message, castSize),
-		register:          make(chan *Client),
-		unregister:        make(chan *Client),
-		clients:           make(map[*Client]struct{}, maxClients),
+		cast:               make(chan *Message, castSize),
+		subscribe:          make(chan *Client),
+		unsubscribe:        make(chan *Client),
+		clients:            make(map[*Client]struct{}, maxClients),
+		broadcastFrequency: broadcastFrequency,
 	}
 }
 
 func (h *Hub) Run() {
-	log.Printf("broadcasting time with frequency %s", h.broadcastDuration)
-
-	go h.broadcastTime()
+	go h.broadcastServerTime()
 
 	for {
 		select {
-		case client := <-h.register:
+		case client := <-h.subscribe:
 			h.clients[client] = struct{}{}
-		case client := <-h.unregister:
+		case client := <-h.unsubscribe:
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
-				close(client.send)
+				close(client.response)
 			}
 		case message := <-h.cast:
 			for client := range h.clients {
-				if send := h.dataToSend(message, client); send != nil {
-					client.send <- send
+				if response := h.responseMessage(message, client); response != nil {
+					client.response <- response
 				}
 			}
 		}
 	}
 }
 
-func (h *Hub) broadcastTime() {
-	ticker := time.NewTicker(h.broadcastDuration)
+func (h *Hub) broadcastServerTime() {
+	log.Printf("broadcasting server time with frequency %s", h.broadcastFrequency)
+
+	ticker := time.NewTicker(h.broadcastFrequency)
 	defer ticker.Stop()
 
 	for range ticker.C {
 		now := time.Now().UTC()
 
 		h.cast <- &Message{
-			Communication: CommunicationBroadcast,
+			CastType: Broadcast,
 			Data: &BroadcastData{
-				ClientID: "",
-				Time:     now,
+				Time: now,
 			},
 		}
 	}
 }
 
-func (h *Hub) dataToSend(message *Message, client *Client) Data {
-	switch message.Communication {
-	case CommunicationUnicast:
+func (h *Hub) responseMessage(message *Message, client *Client) ResponseMessage {
+	switch message.CastType {
+	case Unicast:
 		data, ok := message.Data.(*UnicastData)
 		if !ok {
 			return nil
 		}
 
 		if client.id == data.ClientID {
-			return &UnicastData{
-				ClientID:       data.ClientID,
+			return ResponseUnicast{
 				NumConnections: len(client.hub.clients),
 			}
 		}
-	case CommunicationBroadcast:
+
+		return nil
+	case Broadcast:
 		data, ok := message.Data.(*BroadcastData)
 		if !ok {
 			return nil
 		}
 
-		return &BroadcastData{
+		return ResponseBroadcast{
 			ClientID: client.id,
 			Time:     data.Time,
 		}
 	default:
-		log.Printf("unknown message type %d", message.Communication)
-	}
+		log.Printf("unknown cast type %d", message.CastType)
 
-	return nil
+		return nil
+	}
 }
