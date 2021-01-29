@@ -7,6 +7,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
 	"github.com/alexandear/websocket-pubsub/internal/pkg/command"
@@ -19,6 +20,8 @@ const (
 
 	// Maximum message size allowed from peer.
 	maxMessageSize = 512
+
+	sendBufferSize = 256
 )
 
 // Client is a middleman between the websocket connection and the hub.
@@ -35,8 +38,23 @@ type Client struct {
 	send chan Data
 }
 
-// Read pumps messages from the websocket connection to the hub.
-func (c *Client) Read() {
+func NewClient(hub *Hub, conn *websocket.Conn) *Client {
+	return &Client{
+		id:   uuid.New().String(),
+		hub:  hub,
+		conn: conn,
+		send: make(chan Data, sendBufferSize),
+	}
+}
+
+// Start allow collection of memory referenced by the caller by doing all work in new goroutines.
+func (c *Client) Start() {
+	go c.write()
+	go c.read()
+}
+
+// read pumps messages from the websocket connection to the hub.
+func (c *Client) read() {
 	defer func() {
 		c.hub.unregister <- c
 		_ = c.conn.Close()
@@ -45,50 +63,54 @@ func (c *Client) Read() {
 	c.conn.SetReadLimit(maxMessageSize)
 
 	for {
-		messageType, message, err := c.conn.ReadMessage()
+		read, err := c.readMessage()
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("unexpected close error: %v", err)
-			}
+			log.Printf("failed to read: %v", err)
+		}
 
+		if !read {
 			break
-		}
-
-		if messageType != websocket.BinaryMessage {
-			log.Printf("unexpected message type: %d", messageType)
-
-			continue
-		}
-
-		req := &operation.ReqCommand{}
-		if err := json.Unmarshal(message, req); err != nil {
-			log.Printf("unmarshal ReqCommand failed: %v", err)
-
-			continue
-		}
-
-		switch req.Command {
-		case command.Subscribe:
-			log.Println("received SUBSCRIBE command")
-		case command.Unsubscribe:
-			log.Println("received UNSUBSCRIBE command")
-
-			c.hub.unregister <- c
-		case command.NumConnections:
-			log.Println("received NUM_CONNECTIONS command")
-
-			c.hub.cast <- &Message{
-				Communication: CommunicationUnicast,
-				Data:          &UnicastData{ClientID: c.id},
-			}
-		default:
-			c.hub.unregister <- c
 		}
 	}
 }
 
-// Write pumps messages from the hub to the websocket connection.
-func (c *Client) Write() {
+func (c *Client) readMessage() (bool, error) {
+	messageType, message, err := c.conn.ReadMessage()
+	if err != nil {
+		if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+			return false, err
+		}
+
+		return false, nil
+	}
+
+	if messageType != websocket.BinaryMessage {
+		return true, fmt.Errorf("unexpected message type: %d", messageType)
+	}
+
+	req := &operation.ReqCommand{}
+	if err := json.Unmarshal(message, req); err != nil {
+		return true, fmt.Errorf("unmarshal ReqCommand failed: %w", err)
+	}
+
+	switch req.Command {
+	case command.Subscribe:
+	case command.Unsubscribe:
+		c.hub.unregister <- c
+	case command.NumConnections:
+		c.hub.cast <- &Message{
+			Communication: CommunicationUnicast,
+			Data:          &UnicastData{ClientID: c.id},
+		}
+	default:
+		c.hub.unregister <- c
+	}
+
+	return true, nil
+}
+
+// write pumps messages from the hub to the websocket connection.
+func (c *Client) write() {
 	defer func() {
 		_ = c.conn.Close()
 	}()
@@ -100,8 +122,6 @@ func (c *Client) Write() {
 		_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 
 		if !opened {
-			log.Println("the hub closed the channel")
-
 			_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 
 			return
