@@ -51,12 +51,24 @@ func (h *Hub) Run() {
 			}
 		case data := <-h.cast:
 			for client := range h.clients {
-				if response := h.responseMessage(data, client); response != nil {
+				if response := h.responseMessage(data, client.id); response != nil {
 					client.response <- response
 				}
 			}
 		}
 	}
+}
+
+func (h *Hub) Subscribe(client *Client) {
+	h.subscribe <- client
+}
+
+func (h *Hub) Unsubscribe(client *Client) {
+	h.unsubscribe <- client
+}
+
+func (h *Hub) Cast(data MessageData) {
+	h.cast <- data
 }
 
 func (h *Hub) broadcastServerTime() {
@@ -74,19 +86,19 @@ func (h *Hub) broadcastServerTime() {
 	}
 }
 
-func (h *Hub) responseMessage(data MessageData, client *Client) ResponseMessage {
+func (h *Hub) responseMessage(data MessageData, clientID string) ResponseMessage {
 	switch data := data.(type) {
 	case UnicastData:
-		if client.id != data.ClientID {
+		if clientID != data.ClientID {
 			return nil
 		}
 
 		return ResponseUnicast{
-			NumConnections: len(client.hub.clients),
+			NumConnections: len(h.clients),
 		}
 	case BroadcastData:
 		return ResponseBroadcast{
-			ClientID: client.id,
+			ClientID: clientID,
 			Time:     data.Time,
 		}
 	default:

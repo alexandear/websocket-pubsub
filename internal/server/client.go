@@ -19,21 +19,25 @@ const (
 	sendBufferSize = 256
 )
 
+type WsConn interface {
+	SetReadLimit(limit int64)
+	Close() error
+	ReadMessage() (messageType int, p []byte, err error)
+	WriteMessage(messageType int, data []byte) error
+}
+
 // Client is a middleman between the websocket connection and the hub.
 type Client struct {
-	// Generated client ID.
 	id string
 
-	hub *Hub
-
-	// Websocket connection.
-	conn *websocket.Conn
+	hub  HubI
+	conn WsConn
 
 	// Buffered channel of outbound messages.
 	response chan ResponseMessage
 }
 
-func NewClient(hub *Hub, conn *websocket.Conn) *Client {
+func NewClient(hub HubI, conn WsConn) *Client {
 	client := &Client{
 		id:       uuid.New().String(),
 		hub:      hub,
@@ -41,7 +45,7 @@ func NewClient(hub *Hub, conn *websocket.Conn) *Client {
 		response: make(chan ResponseMessage, sendBufferSize),
 	}
 
-	hub.subscribe <- client
+	client.hub.Subscribe(client)
 
 	return client
 }
@@ -55,7 +59,7 @@ func (c *Client) Run() {
 // read pumps messages from the websocket connection to the hub.
 func (c *Client) read() {
 	defer func() {
-		c.hub.unsubscribe <- c
+		c.hub.Unsubscribe(c)
 		_ = c.conn.Close()
 	}()
 
@@ -95,11 +99,11 @@ func (c *Client) readMessage() (bool, error) {
 	switch req.Command {
 	case command.Subscribe:
 	case command.Unsubscribe:
-		c.hub.unsubscribe <- c
+		c.hub.Unsubscribe(c)
 	case command.NumConnections:
-		c.hub.cast <- UnicastData{ClientID: c.id}
+		c.hub.Cast(UnicastData{ClientID: c.id})
 	default:
-		c.hub.unsubscribe <- c
+		c.hub.Unsubscribe(c)
 	}
 
 	return true, nil

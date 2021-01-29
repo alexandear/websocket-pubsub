@@ -11,11 +11,18 @@ import (
 
 const upgraderBufferSize = 1024
 
+type HubI interface {
+	Subscribe(client *Client)
+	Unsubscribe(client *Client)
+	Cast(data MessageData)
+	Run()
+}
+
 type App struct {
 	addr string
 
 	upgrader websocket.Upgrader
-	hub      *Hub
+	hub      HubI
 	router   *mux.Router
 }
 
@@ -52,5 +59,6 @@ func (a *App) serveWs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	go NewClient(a.hub, conn).Run()
+	client := NewClient(a.hub, conn)
+	client.Run()
 }
