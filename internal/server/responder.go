@@ -6,20 +6,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/gorilla/websocket"
-
 	"github.com/alexandear/websocket-pubsub/internal/pkg/operation"
 )
 
-type Responder struct {
-	conn *websocket.Conn
-}
-
-func NewResponder(conn *websocket.Conn) *Responder {
-	return &Responder{
-		conn: conn,
-	}
-}
+type Responder struct{}
 
 func (r *Responder) Bytes(clientID string, numConnections int, message Data) ([]byte, error) {
 	switch message.Type() {

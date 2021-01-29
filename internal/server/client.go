@@ -41,7 +41,7 @@ func NewClient(hub *Hub, conn *websocket.Conn) *Client {
 		hub:  hub,
 		conn: conn,
 		send: make(chan Data, sendBufferSize),
-		resp: NewResponder(conn),
+		resp: &Responder{},
 	}
 
 	return client
