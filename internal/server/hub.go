@@ -16,7 +16,7 @@ type Hub struct {
 	clients map[*Client]struct{}
 
 	// Broadcast or unicast messages.
-	cast chan *Message
+	cast chan MessageData
 
 	// Register requests from the clients.
 	subscribe chan *Client
@@ -29,7 +29,7 @@ type Hub struct {
 
 func NewHub(broadcastFrequency time.Duration) *Hub {
 	return &Hub{
-		cast:               make(chan *Message, castSize),
+		cast:               make(chan MessageData, castSize),
 		subscribe:          make(chan *Client),
 		unsubscribe:        make(chan *Client),
 		clients:            make(map[*Client]struct{}, maxClients),
@@ -49,9 +49,9 @@ func (h *Hub) Run() {
 				delete(h.clients, client)
 				close(client.response)
 			}
-		case message := <-h.cast:
+		case data := <-h.cast:
 			for client := range h.clients {
-				if response := h.responseMessage(message, client); response != nil {
+				if response := h.responseMessage(data, client); response != nil {
 					client.response <- response
 				}
 			}
@@ -68,42 +68,29 @@ func (h *Hub) broadcastServerTime() {
 	for range ticker.C {
 		now := time.Now().UTC()
 
-		h.cast <- &Message{
-			CastType: Broadcast,
-			Data: &BroadcastData{
-				Time: now,
-			},
+		h.cast <- BroadcastData{
+			Time: now,
 		}
 	}
 }
 
-func (h *Hub) responseMessage(message *Message, client *Client) ResponseMessage {
-	switch message.CastType {
-	case Unicast:
-		data, ok := message.Data.(*UnicastData)
-		if !ok {
+func (h *Hub) responseMessage(data MessageData, client *Client) ResponseMessage {
+	switch data := data.(type) {
+	case UnicastData:
+		if client.id != data.ClientID {
 			return nil
 		}
 
-		if client.id == data.ClientID {
-			return ResponseUnicast{
-				NumConnections: len(client.hub.clients),
-			}
+		return ResponseUnicast{
+			NumConnections: len(client.hub.clients),
 		}
-
-		return nil
-	case Broadcast:
-		data, ok := message.Data.(*BroadcastData)
-		if !ok {
-			return nil
-		}
-
+	case BroadcastData:
 		return ResponseBroadcast{
 			ClientID: client.id,
 			Time:     data.Time,
 		}
 	default:
-		log.Printf("unknown cast type %d", message.CastType)
+		log.Printf("unknown data type %+v", data)
 
 		return nil
 	}

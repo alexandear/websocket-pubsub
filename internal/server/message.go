@@ -4,19 +4,11 @@ import (
 	"time"
 )
 
-type CastType int
-
-const (
-	Broadcast CastType = iota
-	Unicast
-)
-
 type Message struct {
-	CastType CastType
-	Data     CastData
+	Data MessageData
 }
 
-type CastData interface{}
+type MessageData interface{}
 
 type BroadcastData struct {
 	Time time.Time

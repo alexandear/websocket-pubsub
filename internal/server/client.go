@@ -97,10 +97,7 @@ func (c *Client) readMessage() (bool, error) {
 	case command.Unsubscribe:
 		c.hub.unsubscribe <- c
 	case command.NumConnections:
-		c.hub.cast <- &Message{
-			CastType: Unicast,
-			Data:     &UnicastData{ClientID: c.id},
-		}
+		c.hub.cast <- UnicastData{ClientID: c.id}
 	default:
 		c.hub.unsubscribe <- c
 	}
