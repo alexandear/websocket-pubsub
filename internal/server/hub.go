@@ -11,6 +11,8 @@ const (
 	castSize   = 1000
 )
 
+//go:generate mockgen -source=$GOFILE -package mock -destination mock/client.go
+
 type ClientI interface {
 	ID() string
 	CloseResponse()
@@ -62,6 +64,9 @@ func (h *Hub) Run(ctx context.Context) {
 					client.Response(response)
 				}
 			}
+		case <-ctx.Done():
+			log.Println("context done")
+			return
 		}
 	}
 }
