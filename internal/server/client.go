@@ -18,10 +18,12 @@ const (
 	sendBufferSize = 256
 )
 
+//go:generate mockgen -source=$GOFILE -package mock -destination mock/interfaces.go
+
 type HubI interface {
 	Subscribe(client ClientI)
 	Unsubscribe(client ClientI)
-	Cast(data MessageData)
+	Cast(data CastData)
 	Run(ctx context.Context)
 }
 
@@ -51,8 +53,6 @@ func NewClient(hub HubI, conn WsConn) *Client {
 		response: make(chan ResponseMessage, sendBufferSize),
 	}
 
-	client.hub.Subscribe(client)
-
 	return client
 }
 
@@ -61,9 +61,13 @@ func (c *Client) ID() string {
 }
 
 // Run allow collection of memory referenced by the caller by doing all work in new goroutines.
-func (c *Client) Run() {
+func (c *Client) Run(ctx context.Context) {
 	go c.write()
 	go c.read()
+
+	for range ctx.Done() {
+		return
+	}
 }
 
 func (c *Client) CloseResponse() {
@@ -105,12 +109,15 @@ func (c *Client) processCommand(data []byte) error {
 
 	switch req.Command {
 	case command.Subscribe:
+		c.hub.Subscribe(c)
 	case command.Unsubscribe:
 		c.hub.Unsubscribe(c)
 	case command.NumConnections:
 		c.hub.Cast(UnicastData{ClientID: c.id})
 	default:
 		c.hub.Unsubscribe(c)
+
+		return nil
 	}
 
 	return nil
@@ -124,7 +131,7 @@ func (c *Client) write() {
 
 	opened := true
 	for opened {
-		var message interface{}
+		var message ResponseMessage
 		message, opened = <-c.response
 
 		if !opened {
@@ -139,7 +146,7 @@ func (c *Client) write() {
 	}
 }
 
-func (c *Client) writeMessage(message interface{}) error {
+func (c *Client) writeMessage(message ResponseMessage) error {
 	var resp json.RawMessage
 
 	switch m := message.(type) {

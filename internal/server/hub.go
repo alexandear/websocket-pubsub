@@ -23,7 +23,7 @@ type Hub struct {
 	clients map[ClientI]struct{}
 
 	// Broadcast or unicast messages.
-	cast chan MessageData
+	cast chan CastData
 
 	// Register requests from the clients.
 	subscribe chan ClientI
@@ -36,7 +36,7 @@ type Hub struct {
 
 func NewHub(broadcastFrequency time.Duration) *Hub {
 	return &Hub{
-		cast:               make(chan MessageData, castSize),
+		cast:               make(chan CastData, castSize),
 		subscribe:          make(chan ClientI),
 		unsubscribe:        make(chan ClientI),
 		clients:            make(map[ClientI]struct{}, maxClients),
@@ -53,8 +53,8 @@ func (h *Hub) Run(ctx context.Context) {
 			h.clients[client] = struct{}{}
 		case client := <-h.unsubscribe:
 			if _, ok := h.clients[client]; ok {
-				delete(h.clients, client)
 				client.CloseResponse()
+				delete(h.clients, client)
 			}
 		case data := <-h.cast:
 			for client := range h.clients {
@@ -74,7 +74,7 @@ func (h *Hub) Unsubscribe(client ClientI) {
 	h.unsubscribe <- client
 }
 
-func (h *Hub) Cast(data MessageData) {
+func (h *Hub) Cast(data CastData) {
 	h.cast <- data
 }
 
@@ -93,7 +93,7 @@ func (h *Hub) broadcastServerTime() {
 	}
 }
 
-func (h *Hub) responseMessage(data MessageData, clientID string) ResponseMessage {
+func (h *Hub) responseMessage(data CastData, clientID string) ResponseMessage {
 	switch data := data.(type) {
 	case UnicastData:
 		if clientID != data.ClientID {

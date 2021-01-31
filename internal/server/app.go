@@ -56,5 +56,5 @@ func (a *App) serveWs(w http.ResponseWriter, r *http.Request) {
 
 	wsConn := websocket.NewConn(conn)
 	client := NewClient(a.hub, wsConn)
-	client.Run()
+	client.Run(r.Context())
 }

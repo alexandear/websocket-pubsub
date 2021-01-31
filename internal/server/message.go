@@ -4,11 +4,7 @@ import (
 	"time"
 )
 
-type Message struct {
-	Data MessageData
-}
-
-type MessageData interface{}
+type CastData interface{}
 
 type BroadcastData struct {
 	Time time.Time
