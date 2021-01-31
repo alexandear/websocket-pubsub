@@ -1,5 +1,7 @@
 # WebSockets Go Example: Pub/Sub server
 
+## Getting started
+
 > Prerequisites: go 1.15, make must be installed.
 
 Run server:
@@ -38,3 +40,41 @@ Client do:
 - Stdout current number of connections to server.
 - Unsubscribe one connection from the server.
 - Stdout current number of connections to server.
+
+## Development
+
+Build:
+
+```shell
+make build
+```
+
+Run unit tests:
+
+```shell
+make test
+```
+
+Run linters:
+
+```shell
+make lint
+```
+
+Regenerate mocks:
+
+```shell
+make generate
+```
+
+Run server with `-race` option:
+
+```shell
+make server
+```
+
+Run client with `-race` option:
+
+```shell
+make client
+```
