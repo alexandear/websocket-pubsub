@@ -74,7 +74,7 @@ func (c *Client) Read() {
 		message, err := c.conn.ReadBinaryMessage()
 		if err != nil {
 			if !errors.Is(err, websocket.ErrClosedConn) {
-				log.Printf("failed to read: %v", err)
+				log.Printf("failed to read from server: %v", err)
 			}
 
 			return

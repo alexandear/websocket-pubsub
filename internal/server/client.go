@@ -85,14 +85,14 @@ func (c *Client) read() {
 		message, err := c.conn.ReadBinaryMessage()
 		if err != nil {
 			if !errors.Is(err, websocket.ErrClosedConn) {
-				log.Printf("failed to read: %v", err)
+				log.Printf("failed to read from client: %v", err)
 			}
 
 			return
 		}
 
 		if err := c.processCommand(message); err != nil {
-			log.Printf("faield to process command: %v", err)
+			log.Printf("failed to process command: %v", err)
 		}
 	}
 }
