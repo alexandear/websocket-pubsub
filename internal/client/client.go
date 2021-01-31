@@ -14,6 +14,8 @@ import (
 
 var ErrNilConn = errors.New("nil ws conn")
 
+//go:generate mockgen -source=$GOFILE -package mock -destination mock/interfaces.go
+
 type WsConn interface {
 	Close() error
 	ReadBinaryMessage() ([]byte, error)
@@ -66,25 +68,14 @@ func (c *Client) sendCommand(commandType command.Type) error {
 }
 
 func (c *Client) Read() {
-	if c.conn == nil {
-		return
-	}
-
 	for {
-		message, err := c.conn.ReadBinaryMessage()
+		resp, err := c.ReadOne()
 		if err != nil {
 			if !errors.Is(err, websocket.ErrClosedConn) {
-				log.Printf("failed to read from server: %v", err)
+				log.Printf("read one err: %v", err)
 			}
 
 			return
-		}
-
-		resp, err := determineOperationResp(message)
-		if err != nil {
-			log.Printf("failed to determine operation: %v", err)
-
-			continue
 		}
 
 		switch r := resp.(type) {
@@ -94,6 +85,36 @@ func (c *Client) Read() {
 			log.Printf("Num connections: %d", r.NumConnections)
 		}
 	}
+}
+
+func (c *Client) ReadOne() (operation.Resp, error) {
+	if c.conn == nil {
+		return nil, ErrNilConn
+	}
+
+	message, err := c.conn.ReadBinaryMessage()
+	if err != nil {
+		if !errors.Is(err, websocket.ErrClosedConn) {
+			return nil, fmt.Errorf("failed to read from server: %w", err)
+		}
+
+		return nil, err
+	}
+
+	resp, err := determineOperationResp(message)
+	if err != nil {
+		return nil, fmt.Errorf("failed to determine operation: %w", err)
+	}
+
+	return resp, nil
+
+	// return resp, nil
+	// switch r := resp.(type) {
+	// case operation.RespBroadcast:
+	// 	log.Printf("Client ID: %s, server time: %v", r.ClientID, time.Unix(int64(r.Timestamp), 0))
+	// case operation.RespNumConnections:
+	// 	log.Printf("Num connections: %d", r.NumConnections)
+	// }
 }
 
 func determineOperationResp(message []byte) (operation.Resp, error) {
