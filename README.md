@@ -16,10 +16,6 @@ Establish websocket client connections:
 go run . client --clients 5000
 ```
 
-## Demo
-
-[![asciicast](https://asciinema.org/a/XZTVNsP9zEvWxwsUpkpPwwvul.svg)](https://asciinema.org/a/XZTVNsP9zEvWxwsUpkpPwwvul)
-
 ## Server
 
 Server features:
